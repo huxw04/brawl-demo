@@ -1,0 +1,31 @@
+; Engine configuration file.
+; Independent arena-brawler prototype.
+
+config_version=5
+
+[application]
+
+config/name="Brawl Framework Demo"
+run/main_scene="res://scenes/launcher.tscn"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+environment/defaults/default_clear_color=Color(0.055, 0.067, 0.09, 1)
+
+[layer_names]
+
+2d_physics/layer_1="world"
+2d_physics/layer_2="hurtbox"
+3d_physics/layer_1="world"
+3d_physics/layer_2="hurtbox"
+3d_physics/layer_3="actors"

@@ -1,0 +1,12 @@
+.godot/
+.tools/
+runtime/*.png*
+export_templates/
+feature_profiles/
+script_templates/
+text_editor_themes/
+
+# Development references can be large and may have third-party copyright.
+# Keep provenance notes, but do not publish downloaded or rejected source art.
+assets/heroes/*/references/*
+!assets/heroes/*/references/sources.md
