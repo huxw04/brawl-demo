@@ -1,5 +1,6 @@
 .godot/
 .tools/
+dist/
 runtime/*.png*
 export_templates/
 feature_profiles/

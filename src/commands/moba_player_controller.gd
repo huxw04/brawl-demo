@@ -86,6 +86,9 @@ func _select_ability(id: String) -> void:
 		targeting_changed.emit("")
 		var command := BattleCommand.create(actor.battle_id, BattleCommand.Type.CAST_ABILITY, actor.global_position)
 		command.ability_id = id
+		if ability.face_move_direction_on_cast:
+			var move_direction := Vector3(actor.move_intent.x, 0.0, actor.move_intent.y)
+			command.direction = move_direction.normalized() if move_direction.length_squared() > 0.001 else actor.facing
 		stream.submit(command)
 		return
 	pending_ability = "" if pending_ability == id else id

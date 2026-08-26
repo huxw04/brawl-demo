@@ -6,6 +6,8 @@ var pathfinder: ArenaPathfinder
 var path := PackedVector3Array()
 var path_index := 0
 var destination := Vector3.ZERO
+var resolved_destination := Vector3.ZERO
+var direct_steering_destination := false
 var pending_basic := false
 var pending_basic_target := Vector3.ZERO
 
@@ -15,50 +17,76 @@ func setup(p_actor: CombatActor, p_pathfinder: ArenaPathfinder) -> void:
 	pathfinder = p_pathfinder
 
 
-func apply_command(command: BattleCommand) -> void:
+func apply_command(command: BattleCommand) -> bool:
 	match command.type:
 		BattleCommand.Type.MOVE_TO:
-			set_destination(command.world_target, true)
+			return set_destination(command.world_target, true)
 		BattleCommand.Type.STOP:
 			stop()
+			return true
 		BattleCommand.Type.BASIC_ATTACK:
 			actor.cancel_nailoong_roll_for_command()
 			pending_basic = true
 			pending_basic_target = command.world_target
 			_advance_pending_basic()
+			return true
 		BattleCommand.Type.CAST_ABILITY:
 			pending_basic = false
-			actor.set_ability_target(command.world_target)
-			_face_target(command.world_target)
+			var cast_ability := actor.ability_by_id(command.ability_id)
+			var cast_target := command.world_target
+			if cast_ability != null and cast_ability.face_move_direction_on_cast and command.direction.length_squared() > 0.001:
+				actor.facing = Vector3(command.direction.x, 0.0, command.direction.z).normalized()
+				cast_target = actor.global_position + actor.facing
+			actor.set_ability_target(cast_target)
+			_face_target(cast_target)
 			stop()
-			actor.try_ability(command.ability_id)
+			return actor.try_ability(command.ability_id)
 		BattleCommand.Type.BEGIN_ABILITY:
 			pending_basic = false
 			actor.set_ability_target(command.world_target)
 			_face_target(command.world_target)
 			stop()
-			actor.try_ability(command.ability_id)
+			return actor.try_ability(command.ability_id)
 		BattleCommand.Type.END_ABILITY:
+			var was_active := actor.current_ability != null and actor.current_ability.ability_id == command.ability_id
 			actor.release_held_ability(command.ability_id)
+			return was_active
 		BattleCommand.Type.ROLL:
 			pending_basic = false
 			if command.direction.length_squared() > 0.001:
 				actor.facing = Vector3(command.direction.x, 0.0, command.direction.z).normalized()
 				actor.set_move_intent(Vector2(actor.facing.x, actor.facing.z))
-			actor.try_roll()
+			return actor.try_roll()
 		BattleCommand.Type.JUMP:
 			pending_basic = false
-			actor.try_jump()
+			return actor.try_jump()
 		BattleCommand.Type.CANCEL_ABILITY:
+			var had_cancelable := actor.current_ability != null and actor.current_ability.vfx_id == "nailoong_roll"
 			actor.cancel_nailoong_roll_for_command()
+			return had_cancelable
+	return false
 
 
-func set_destination(target: Vector3, clear_pending := true) -> void:
+func set_destination(target: Vector3, clear_pending := true) -> bool:
 	if clear_pending:
 		pending_basic = false
 	destination = target
+	if _is_nailoong_rolling():
+		direct_steering_destination = true
+		path = PackedVector3Array()
+		path_index = 0
+		var direct_offset := target - actor.global_position
+		direct_offset.y = 0.0
+		actor.set_move_intent(Vector2(direct_offset.x, direct_offset.z).normalized() if direct_offset.length_squared() > 0.001 else Vector2.ZERO)
+		resolved_destination = target
+		return direct_offset.length_squared() > 0.001
+	direct_steering_destination = false
 	path = pathfinder.find_path(actor.global_position, target)
 	path_index = 1 if path.size() > 1 else 0
+	resolved_destination = path[path.size() - 1] if not path.is_empty() else actor.global_position
+	if path.is_empty():
+		actor.set_move_intent(Vector2.ZERO)
+	return not path.is_empty()
 
 
 func advance_movement() -> void:
@@ -66,6 +94,17 @@ func advance_movement() -> void:
 		return
 	if pending_basic and _advance_pending_basic():
 		return
+	if direct_steering_destination:
+		if _is_nailoong_rolling():
+			var direct_offset := destination - actor.global_position
+			direct_offset.y = 0.0
+			if direct_offset.length() > 0.16:
+				actor.set_move_intent(Vector2(direct_offset.x, direct_offset.z).normalized())
+				return
+			stop()
+			return
+		direct_steering_destination = false
+		set_destination(destination, false)
 	while path_index < path.size():
 		var offset := path[path_index] - actor.global_position
 		offset.y = 0.0
@@ -81,6 +120,7 @@ func stop(clear_pending := true) -> void:
 		pending_basic = false
 	path = PackedVector3Array()
 	path_index = 0
+	direct_steering_destination = false
 	if actor != null:
 		actor.set_move_intent(Vector2.ZERO)
 
@@ -113,3 +153,7 @@ func _face_target(target: Vector3) -> void:
 	direction.y = 0.0
 	if direction.length_squared() > 0.001:
 		actor.facing = direction.normalized()
+
+
+func _is_nailoong_rolling() -> bool:
+	return actor != null and actor.current_ability != null and actor.current_ability.vfx_id == "nailoong_roll" and actor.ability_phase == "active"

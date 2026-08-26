@@ -11,10 +11,9 @@ static func create() -> HeroDefinition:
 	hero.theme_color = Color("b9854e")
 	hero.max_hp = 180.0
 	hero.move_speed = 3.35
-	hero.max_energy = 100.0
-	hero.status_bar_id = "ultimate_ready"
-	hero.status_bar_label = "肌肉值"
-	hero.status_bar_color = Color("f1b45d")
+	hero.max_energy = 0.0
+	hero.status_bar_id = ""
+	hero.status_bar_label = ""
 	hero.body_radius = 0.43
 	hero.body_height = 1.48
 	hero.sprite_texture = load("res://assets/heroes/sword_shield_dog/sprites/sword_shield_dog_body_v1.png")
@@ -36,7 +35,7 @@ static func create() -> HeroDefinition:
 	basic.arc_degrees = 150.0
 	basic.hitbox_center_y = 0.66
 	basic.auto_target_radius = 1.94
-	basic.energy_on_hit = 6.0
+	basic.energy_on_hit = 0.0
 	basic.vfx_id = "shield_dog_swing"
 
 	var q := _ability("skill_q", "正面格挡", 0.08, 0.10, 0.08, 2.0)
@@ -65,21 +64,24 @@ static func create() -> HeroDefinition:
 	w.self_control_immune_duration = 0.62
 	w.startup_slow_duration = 0.5
 	w.vfx_id = "shield_dog_heavy_chop"
-	w.energy_on_hit = 8.0
+	w.energy_on_hit = 0.0
+	w.targeting_preview = "box"
+	w.targeting_preview_secondary_radius = w.delayed_radius
 
-	var e := _ability("skill_e", "盾牌猛击", 0.22, 0.30, 0.28, 6.0)
+	var e := _ability("skill_e", "盾牌猛击", 0.12, 0.18, 0.12, 6.0)
 	e.damage = 8.0
 	e.knockback = 4.8
-	e.hitbox_size = Vector3(1.65, 1.25, 1.25)
-	e.hitbox_distance = 0.76
+	e.hitbox_size = Vector3(2.10, 1.25, 1.65)
+	e.hitbox_distance = 0.92
 	e.hitbox_center_y = 0.68
 	e.apply_stun_duration = 1.0
 	e.apply_stun_delay = 0.12
 	e.vfx_id = "shield_bash"
-	e.energy_on_hit = 5.0
+	e.energy_on_hit = 0.0
+	e.targeting_preview = "box"
 
 	var r := _ability("ultimate", "肌肉觉醒", 0.62, 0.05, 0.20, 30.0)
-	r.energy_cost = 100.0
+	r.energy_cost = 0.0
 	r.damage = 0.0
 	r.spawns_attack = false
 	r.requires_aim_confirmation = false
@@ -105,12 +107,16 @@ static func create() -> HeroDefinition:
 	form_w.damage = 0.0
 	form_w.spawns_attack = true
 	form_w.requires_aim_confirmation = false
-	form_w.dash_distance = 0.80
+	form_w.face_move_direction_on_cast = true
+	form_w.dash_distance = 1.0
 	form_w.knockback = 3.2
 	form_w.hitbox_size = Vector3(0.95, 1.35, 1.0)
 	form_w.hitbox_distance = 0.48
 	form_w.hitbox_center_y = 0.78
 	form_w.vfx_id = "swole_dash"
+	form_w.targeting_preview = "dash"
+	form_w.targeting_preview_range = form_w.dash_distance
+	form_w.targeting_preview_width = form_w.hitbox_size.x
 
 	var form_e := _ability("skill_e", "震地", 0.28, 0.10, 0.28, 4.0)
 	form_e.damage = 10.0

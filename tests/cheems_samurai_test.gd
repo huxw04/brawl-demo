@@ -48,22 +48,42 @@ func _run() -> void:
 	hero.facing = Vector3.LEFT
 	_check(hero.auto_face_nearest(2.35), "basic auto-target should acquire in a full circle")
 	_check(hero.facing.x > 0.9, "auto-target should turn toward the acquired target")
+	var hat_layer := hero.visual_layer_sprites.get("hat") as Sprite3D
+	var hat_base_x := 0.10 if hero.facing.x >= 0.0 else -0.10
+	var hat_base_z := 0.025
 
 	hero.energy = 99.0
 	_check(not hero.try_ability("ultimate"), "ultimate should require a full energy bar")
 	hero.energy = 100.0
 	_check(hero.try_ability("ultimate"), "ultimate should unlock at full energy")
+	_check(hero.get_tree().get_nodes_in_group("concentration_rings").size() >= 3, "ultimate startup should repeatedly contract white rings across its range")
 	await _physics_frames(3)
 	_check(hero.status_controller.has_tag("control_immune"), "ultimate should grant control immunity immediately")
 	_check(target.status_controller.has_visual("slow"), "ultimate startup should immediately slow enemies inside the circle")
 	_check(not hero.status_controller.has_tag("untargetable"), "ultimate should remain targetable during its startup")
 	await _physics_frames(32)
 	_check(hero.status_controller.has_tag("untargetable"), "ultimate second stage should become untargetable when an enemy is in range")
-	var hat_layer := hero.visual_layer_sprites.get("hat") as Sprite3D
-	var hat_base_x := 0.10 if hero.facing.x >= 0.0 else -0.10
-	_check(is_equal_approx(hat_layer.position.x - hat_base_x, hero.sprite.position.x), "ultimate hat and body should share the same active displacement")
+	var saw_depth_motion := false
+	for _index in range(18):
+		await physics_frame
+		if absf(hero.sprite.position.z) > 0.08:
+			saw_depth_motion = true
+	_check(saw_depth_motion, "ultimate body should move along random ground-plane lines rather than only left and right")
+	_check(is_equal_approx(hat_layer.position.x - hat_base_x, hero.sprite.position.x) and is_equal_approx(hat_layer.position.z - hat_base_z, hero.sprite.position.z), "ultimate hat and body should share the same two-dimensional active displacement")
+	var dimensional_lines := hero.get_tree().get_nodes_in_group("dimensional_cut_lines")
+	_check(dimensional_lines.size() == 22, "ultimate should use the reduced set of 22 cut lines")
+	var average_line_radius := 0.0
+	for line in dimensional_lines:
+		var cylinder := (line as MeshInstance3D).mesh as CylinderMesh
+		_check(cylinder.top_radius <= 0.0241, "ultimate cut lines should keep the reduced maximum width")
+		var offset := (line as MeshInstance3D).global_position - hero.global_position
+		average_line_radius += Vector2(offset.x, offset.z).length()
+	if not dimensional_lines.is_empty():
+		average_line_radius /= dimensional_lines.size()
+	_check(average_line_radius > 1.0, "ultimate cut centres should be biased away from the crowded centre")
 	await _physics_frames(120)
-	_check(is_equal_approx(hat_layer.position.x - hat_base_x, hero.sprite.position.x), "ultimate hat and body should return to center together")
+	_check(is_equal_approx(hat_layer.position.x - hat_base_x, hero.sprite.position.x) and is_equal_approx(hat_layer.position.z - hat_base_z, hero.sprite.position.z), "ultimate hat and body should return to center together")
+	_check(Vector2(hero.sprite.position.x, hero.sprite.position.z).length() < 0.05, "ultimate visual should settle back at the actor centre")
 	hero.reset_runtime(Vector3(-2.0, 0.05, 0.0))
 	target.reset_runtime(Vector3(3.0, 0.05, 0.0))
 	await _physics_frames(5)
@@ -71,7 +91,7 @@ func _run() -> void:
 	_check(hero.try_ability("ultimate"), "ultimate should start when no enemy is inside the circle")
 	await _physics_frames(32)
 	_check(hero.ability_phase != "active", "empty ultimate should skip the active animation entirely")
-	_check(absf(hero.sprite.position.x) < 0.05, "empty ultimate should not move the Cheems body")
+	_check(Vector2(hero.sprite.position.x, hero.sprite.position.z).length() < 0.05, "empty ultimate should not move the Cheems body")
 	await _physics_frames(8)
 	_check(not hero.status_controller.has_tag("untargetable"), "ultimate should not enter stage two when its startup circle is empty")
 	_check(hero.get_parent().get_node_or_null("DimensionalMagicCircle") == null, "empty ultimate circle should disappear immediately after the 0.5 second startup")

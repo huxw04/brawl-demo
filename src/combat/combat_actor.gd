@@ -1,6 +1,8 @@
 class_name CombatActor
 extends CharacterBody3D
 
+const NAILOONG_ROLL_TURN_SPEED := TAU
+
 signal resource_changed(actor: CombatActor)
 signal action_started(actor: CombatActor, action_id: String)
 signal action_finished(actor: CombatActor, action_id: String)
@@ -59,7 +61,11 @@ var w_slash_visual_remaining := 0.0
 var visual_rng := RandomNumberGenerator.new()
 var active_magic_circle: Node3D
 var magic_circle_lifetime_tween: Tween
-var dimensional_visual_offset_x := 0.0
+var dimensional_visual_offset := Vector3.ZERO
+var dimensional_visual_from := Vector3.ZERO
+var dimensional_visual_to := Vector3.ZERO
+var dimensional_visual_segment_remaining := 0.0
+var dimensional_visual_segment_duration := 0.0
 var death_visual_elapsed := 0.0
 var death_fall_side := 1.0
 var death_sword_angle := -PI * 0.5
@@ -267,9 +273,10 @@ func try_roll(ignore_cost := false) -> bool:
 	if is_defeated or _is_control_locked() or not is_on_floor() or roll_remaining > 0.0 or current_ability != null or hurt_remaining > 0.0:
 		return false
 	var roll_cost := definition.max_stamina / 3.0
-	if not ignore_cost and stamina < roll_cost:
+	var bypass_cost := ignore_cost or ignore_ability_requirements
+	if not bypass_cost and stamina < roll_cost:
 		return false
-	if not ignore_cost:
+	if not bypass_cost:
 		spend_stamina(roll_cost)
 	roll_direction = _intent_direction() if move_intent.length_squared() > 0.01 else facing
 	facing = roll_direction
@@ -550,6 +557,10 @@ func _activate_ability(ability: AbilityDefinition) -> void:
 func _apply_startup_effects(ability: AbilityDefinition) -> void:
 	if ability.self_control_immune_duration > 0.0:
 		apply_status(CombatStatuses.control_immune(ability.self_control_immune_duration), battle_id)
+	if ability.vfx_id == "chu_ying_teleport":
+		_spawn_chu_ying_teleport_charge(ability.startup)
+	elif ability.vfx_id == "dimensional_slash":
+		_spawn_concentration_rings(ability.hitbox_radius, ability.startup, "CheemsUltimateFocus")
 	if ability.startup_slow_duration <= 0.0:
 		return
 	if ability.startup_slow_ratio < 1.0:
@@ -605,7 +616,7 @@ func _update_motion(delta: float) -> void:
 		var desired_roll_direction := _intent_direction()
 		if desired_roll_direction.length_squared() > 0.001:
 			var turn_angle := nailoong_roll_direction.signed_angle_to(desired_roll_direction, Vector3.UP)
-			var turn_step := clampf(turn_angle, -0.5 * delta, 0.5 * delta)
+			var turn_step := clampf(turn_angle, -NAILOONG_ROLL_TURN_SPEED * delta, NAILOONG_ROLL_TURN_SPEED * delta)
 			nailoong_roll_direction = (Basis(Vector3.UP, turn_step) * nailoong_roll_direction).normalized()
 			facing = nailoong_roll_direction
 		var roll_speed := definition.move_speed * 1.65
@@ -757,7 +768,11 @@ func reset_runtime(at_position: Vector3) -> void:
 	current_attack_damage_multiplier = 1.0
 	action_elapsed = 0.0
 	visual_motion_time = 0.0
-	dimensional_visual_offset_x = 0.0
+	dimensional_visual_offset = Vector3.ZERO
+	dimensional_visual_from = Vector3.ZERO
+	dimensional_visual_to = Vector3.ZERO
+	dimensional_visual_segment_remaining = 0.0
+	dimensional_visual_segment_duration = 0.0
 	held_release_requested = false
 	transformed = false
 	transformed_remaining = 0.0
@@ -903,18 +918,21 @@ func _update_visual(delta: float) -> void:
 	target_scale.y *= pose_scale.y
 	var dimensional_action := current_ability != null and current_ability.vfx_id == "dimensional_slash"
 	if dimensional_action and ability_phase == "active":
-		dimensional_visual_offset_x = sin(float(Time.get_ticks_msec()) * 0.035) * 1.25
+		_update_dimensional_visual_motion(delta, current_ability.hitbox_radius)
 	else:
-		dimensional_visual_offset_x = move_toward(dimensional_visual_offset_x, 0.0, delta * 4.0)
+		dimensional_visual_offset = dimensional_visual_offset.move_toward(Vector3.ZERO, delta * 8.0)
+		dimensional_visual_segment_remaining = 0.0
 	var pose_offset: Vector2 = sprite_pose["offset"]
-	sprite.position.x = dimensional_visual_offset_x + pose_offset.x * facing_sign
+	sprite.position.x = dimensional_visual_offset.x + pose_offset.x * facing_sign
 	sprite.position.y = definition.sprite_y + pose_offset.y
+	sprite.position.z = dimensional_visual_offset.z
 	sprite.scale = sprite.scale.lerp(target_scale, minf(1.0, delta * 15.0))
 	var visual_angle := float(sprite_pose["angle"]) * facing_sign
 	if nailoong_rolling:
 		visual_angle += action_elapsed * 10.5 * facing_sign
 	elif current_ability != null and current_ability.vfx_id == "nailoong_tail_sweep":
-		visual_angle += sin(clampf(action_elapsed / maxf(current_ability.total_duration(), 0.01), 0.0, 1.0) * PI) * 0.24 * facing_sign
+		# The tail attack reads as a full body spin rather than a small sideways wobble.
+		visual_angle += clampf(action_elapsed / maxf(current_ability.total_duration(), 0.01), 0.0, 1.0) * TAU * facing_sign
 	_set_visual_layer_angle(sprite, visual_angle)
 	var base_color := Color.WHITE if team == 1 else Color("ffb1aa")
 	if status_controller.has_visual("slow"):
@@ -938,11 +956,15 @@ func _update_visual(delta: float) -> void:
 	name_label.modulate = Color("ffe29a") if not overhead.is_empty() else Color("e8f4fb")
 	var filled := clampi(ceili((hp / definition.max_hp) * 12.0), 0, 12)
 	hp_label.text = "▰".repeat(filled) + "▱".repeat(12 - filled)
-	var energy_filled := clampi(ceili((energy / definition.max_energy) * 12.0), 0, 12)
-	energy_label.text = "▰".repeat(energy_filled) + "▱".repeat(12 - energy_filled)
+	var has_status_resource := definition.max_energy > 0.0 and not definition.status_bar_id.is_empty()
+	if has_status_resource:
+		var energy_filled := clampi(ceili((energy / definition.max_energy) * 12.0), 0, 12)
+		energy_label.text = "▰".repeat(energy_filled) + "▱".repeat(12 - energy_filled)
+	else:
+		energy_label.text = ""
 	name_label.visible = not hidden_from_local_view
 	hp_label.visible = not hidden_from_local_view
-	energy_label.visible = not hidden_from_local_view
+	energy_label.visible = has_status_resource and not hidden_from_local_view
 	_update_visual_layers()
 	var visual_color := Color(0.3, 0.8, 1.0, 0.0)
 	if status_controller.has_visual("slow"):
@@ -1368,14 +1390,17 @@ func _activate_chu_ying_teleport(ability: AbilityDefinition) -> void:
 func _activate_chu_ying_barrier(ability: AbilityDefinition, attack_id: int) -> void:
 	var endpoint := _clamped_ability_point(ability.target_required_range)
 	var origin := Vector3(global_position.x, 0.0, global_position.z)
-	var diameter := endpoint - origin
-	diameter.y = 0.0
-	var radius := maxf(0.12, diameter.length() * 0.5)
-	var center := origin + diameter * 0.5
-	_damage_circle_at(center, radius, ability, attack_id)
+	# Origin and endpoint are opposite corners. Keep each full side at least one
+	# world unit (100 yards), rather than turning the diagonal into a square.
+	var center := (origin + endpoint) * 0.5
+	var half_extents := Vector2(
+		maxf(absf(endpoint.x - origin.x) * 0.5, 0.5),
+		maxf(absf(endpoint.z - origin.z) * 0.5, 0.5)
+	)
+	_damage_box_at(center, half_extents, ability, attack_id)
 	var barrier := ChuYingBarrierScript.new() as ChuYingBarrier
 	get_parent().add_child(barrier)
-	barrier.configure(self, center, radius, attack_id)
+	barrier.configure(self, center, half_extents, attack_id)
 
 
 func _find_enemy_near_ability_point(max_range: float) -> CombatActor:
@@ -1441,6 +1466,30 @@ func _damage_circle_at(center: Vector3, radius: float, ability: AbilityDefinitio
 	var shape := CylinderShape3D.new()
 	shape.radius = radius
 	shape.height = 2.2
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = shape
+	query.transform = Transform3D(Basis.IDENTITY, Vector3(center.x, 1.0, center.z))
+	query.collision_mask = 2
+	query.collide_with_areas = true
+	query.collide_with_bodies = false
+	for result in get_world_3d().direct_space_state.intersect_shape(query, 48):
+		var collider = result.get("collider")
+		var target = collider.get_meta("combat_actor", null) if collider is Area3D else null
+		if not target is CombatActor or target == self or target.team == team:
+			continue
+		var combat_target := target as CombatActor
+		var hp_before: float = combat_target.hp
+		var direction: Vector3 = combat_target.global_position - center
+		direction.y = 0.0
+		if direction.length_squared() <= 0.001:
+			direction = facing
+		if combat_target.receive_hit(self, ability, direction.normalized(), attack_id, ability.damage):
+			on_ability_hit(ability, minf(hp_before, ability.damage))
+
+
+func _damage_box_at(center: Vector3, half_extents: Vector2, ability: AbilityDefinition, attack_id: int) -> void:
+	var shape := BoxShape3D.new()
+	shape.size = Vector3(half_extents.x * 2.0, 2.2, half_extents.y * 2.0)
 	var query := PhysicsShapeQueryParameters3D.new()
 	query.shape = shape
 	query.transform = Transform3D(Basis.IDENTITY, Vector3(center.x, 1.0, center.z))
@@ -1582,7 +1631,10 @@ func _spawn_ability_vfx(ability: AbilityDefinition) -> void:
 	if ability.vfx_id.is_empty():
 		return
 	match ability.vfx_id:
-		"katana_sweep", "shield_dog_swing", "shield_guard", "shield_bash", "shield_dog_heavy_chop", "swole_punch", "swole_dash", "sword_shield_transform":
+		"katana_sweep", "shield_dog_swing", "shield_guard", "shield_dog_heavy_chop", "swole_punch", "swole_dash", "sword_shield_transform":
+			return
+		"shield_bash":
+			_spawn_shield_bash_ghost(ability)
 			return
 		"sword_wave", "multi_slash":
 			return
@@ -1636,11 +1688,12 @@ func _spawn_ability_vfx(ability: AbilityDefinition) -> void:
 
 
 func _spawn_nailoong_tail_sweep(radius: float) -> void:
-	var ring := _spawn_nailoong_ring(global_position + Vector3.UP * 0.54, radius * 0.72, radius, Color(1.0, 0.86, 0.24, 0.72))
-	ring.scale = Vector3(0.20, 0.20, 0.20)
+	var ring := _spawn_nailoong_ring(Vector3(global_position.x, 0.065, global_position.z), radius * 0.80, radius, Color(0.96, 0.99, 1.0, 0.52))
+	ring.name = "NailoongBasicShockwave"
+	ring.scale = Vector3.ONE * 0.18
 	var tween := ring.create_tween()
-	tween.tween_property(ring, "scale", Vector3.ONE, 0.13).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(ring, "transparency", 1.0, 0.24)
+	tween.tween_property(ring, "scale", Vector3.ONE * 1.10, 0.22).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(ring, "transparency", 1.0, 0.26)
 	tween.tween_callback(ring.queue_free)
 
 
@@ -1689,7 +1742,8 @@ func _spawn_nailoong_takeoff_ring() -> void:
 
 
 func _spawn_nailoong_landing_wave(radius: float) -> void:
-	var ring := _spawn_nailoong_ring(Vector3(global_position.x, 0.06, global_position.z), radius * 0.58, radius, Color(1.0, 0.56, 0.10, 0.74))
+	var ring := _spawn_nailoong_ring(Vector3(global_position.x, 0.06, global_position.z), radius * 0.78, radius, Color(0.96, 0.99, 1.0, 0.56))
+	ring.name = "NailoongLandingShockwave"
 	ring.scale = Vector3(0.18, 0.18, 0.18)
 	var tween := ring.create_tween()
 	tween.tween_property(ring, "scale", Vector3.ONE * 1.18, 0.25).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -1710,12 +1764,35 @@ func _spawn_nailoong_laugh_wave() -> void:
 
 
 func _spawn_nailoong_heal_tick() -> void:
-	var ring := _spawn_nailoong_ring(Vector3(global_position.x, 0.12, global_position.z), 0.28, 0.42, Color(0.35, 1.0, 0.38, 0.62))
-	var tween := ring.create_tween()
-	tween.tween_property(ring, "position:y", 1.05, 0.34)
-	tween.parallel().tween_property(ring, "scale", Vector3.ONE * 0.45, 0.34)
-	tween.parallel().tween_property(ring, "transparency", 1.0, 0.34)
-	tween.tween_callback(ring.queue_free)
+	var cross := Node3D.new()
+	cross.name = "NailoongHealCross"
+	cross.top_level = true
+	cross.add_to_group("transient_combat_vfx")
+	cross.add_to_group("nailoong_heal_crosses")
+	get_parent().add_child(cross)
+	var active_camera := get_viewport().get_camera_3d()
+	var screen_right := Vector3.RIGHT
+	if active_camera != null:
+		cross.global_basis = active_camera.global_basis.orthonormalized()
+		screen_right = active_camera.global_basis.x.normalized()
+	var side := -1.0 if visual_rng.randi_range(0, 1) == 0 else 1.0
+	cross.global_position = global_position + screen_right * side * visual_rng.randf_range(0.28, 0.46) + Vector3.UP * visual_rng.randf_range(0.42, 0.64)
+	for size in [Vector3(0.30, 0.065, 0.025), Vector3(0.065, 0.30, 0.025)]:
+		var part := MeshInstance3D.new()
+		part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var mesh := BoxMesh.new()
+		mesh.size = size
+		mesh.material = _vfx_material(Color(0.32, 1.0, 0.38, 0.76))
+		part.mesh = mesh
+		cross.add_child(part)
+		var fade := part.create_tween()
+		fade.tween_interval(0.08)
+		fade.tween_property(part, "transparency", 1.0, 0.36)
+	var destination := cross.global_position + Vector3.UP * 0.72
+	var tween := cross.create_tween()
+	tween.tween_property(cross, "global_position", destination, 0.44).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(cross, "scale", Vector3.ONE * 1.18, 0.44)
+	tween.tween_callback(cross.queue_free)
 
 
 func _spawn_nailoong_ring(position: Vector3, inner_radius: float, outer_radius: float, color: Color) -> MeshInstance3D:
@@ -1735,34 +1812,141 @@ func _spawn_nailoong_ring(position: Vector3, inner_radius: float, outer_radius: 
 
 
 func _spawn_chu_ying_board_visual(position: Vector3) -> void:
-	var board := MeshInstance3D.new()
+	var board := Node3D.new()
+	board.name = "ChuYingBoardRectangle"
 	board.top_level = true
 	board.add_to_group("transient_combat_vfx")
+	board.add_to_group("chu_ying_board_rectangles")
 	get_parent().add_child(board)
 	board.global_position = Vector3(position.x, 0.10, position.z)
-	var mesh := BoxMesh.new()
-	mesh.size = Vector3(0.78, 0.06, 0.78)
-	mesh.material = _vfx_material(Color(0.60, 0.38, 0.16, 0.94))
-	board.mesh = mesh
-	for index in range(5):
-		var offset := -0.30 + float(index) * 0.15
-		for vertical in [false, true]:
-			var line := MeshInstance3D.new()
-			var line_mesh := BoxMesh.new()
-			line_mesh.size = Vector3(0.66, 0.008, 0.012) if not vertical else Vector3(0.012, 0.008, 0.66)
-			line_mesh.material = _vfx_material(Color(0.10, 0.07, 0.035, 0.82))
-			line.mesh = line_mesh
-			line.position = Vector3(0.0, 0.038, offset) if not vertical else Vector3(offset, 0.038, 0.0)
-			board.add_child(line)
+	var pieces: Array[MeshInstance3D] = []
+	var floor := MeshInstance3D.new()
+	var floor_mesh := BoxMesh.new()
+	floor_mesh.size = Vector3(0.78, 0.018, 0.78)
+	floor_mesh.material = _vfx_material(Color(0.46, 0.72, 1.0, 0.16))
+	floor.mesh = floor_mesh
+	board.add_child(floor)
+	pieces.append(floor)
+	for edge_index in range(4):
+		var edge := MeshInstance3D.new()
+		var horizontal := edge_index < 2
+		var edge_mesh := BoxMesh.new()
+		edge_mesh.size = Vector3(0.82, 0.028, 0.035) if horizontal else Vector3(0.035, 0.028, 0.82)
+		edge_mesh.material = _vfx_material(Color(0.72, 0.88, 1.0, 0.76))
+		edge.mesh = edge_mesh
+		var side := -1.0 if edge_index % 2 == 0 else 1.0
+		edge.position = Vector3(0.0, 0.024, side * 0.40) if horizontal else Vector3(side * 0.40, 0.024, 0.0)
+		board.add_child(edge)
+		pieces.append(edge)
+	_add_chu_ying_light_walls(board, Vector2(0.41, 0.41), 0.65, pieces)
 	board.scale = Vector3.ONE * 0.25
 	var tween := board.create_tween()
 	tween.tween_property(board, "scale", Vector3.ONE, 0.14).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	tween.tween_interval(0.48)
-	tween.tween_property(board, "transparency", 1.0, 0.20)
+	for piece in pieces:
+		tween.parallel().tween_property(piece, "transparency", 1.0, 0.20)
 	tween.tween_callback(board.queue_free)
 
 
+func _add_chu_ying_light_walls(anchor: Node3D, half_extents: Vector2, height: float, pieces: Array[MeshInstance3D]) -> void:
+	for wall_index in range(4):
+		var wall := MeshInstance3D.new()
+		wall.name = "ChuYingLightWall"
+		wall.add_to_group("chu_ying_light_walls")
+		wall.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var along_x := wall_index < 2
+		var quad := QuadMesh.new()
+		quad.size = Vector2(half_extents.x * 2.0, height) if along_x else Vector2(half_extents.y * 2.0, height)
+		quad.material = _chu_ying_light_wall_material()
+		wall.mesh = quad
+		var side := -1.0 if wall_index % 2 == 0 else 1.0
+		wall.position = Vector3(0.0, height * 0.5, side * half_extents.y) if along_x else Vector3(side * half_extents.x, height * 0.5, 0.0)
+		wall.rotation.y = 0.0 if along_x else PI * 0.5
+		anchor.add_child(wall)
+		pieces.append(wall)
+
+
+func _chu_ying_light_wall_material() -> ShaderMaterial:
+	var shader := Shader.new()
+	shader.code = """
+shader_type spatial;
+render_mode unshaded, cull_disabled, blend_add, depth_draw_never;
+void fragment() {
+	float bottom_to_top = smoothstep(0.0, 0.92, UV.y);
+	vec3 glow = vec3(0.56, 0.78, 1.0);
+	ALBEDO = glow;
+	EMISSION = glow * 1.8;
+	ALPHA = bottom_to_top * 0.34;
+}
+"""
+	var material := ShaderMaterial.new()
+	material.shader = shader
+	return material
+
+
+func _spawn_chu_ying_teleport_charge(duration: float) -> void:
+	var circle := Node3D.new()
+	circle.name = "ChuYingTeleportChargeCircle"
+	circle.top_level = true
+	circle.add_to_group("transient_combat_vfx")
+	circle.add_to_group("chu_ying_teleport_charge")
+	get_parent().add_child(circle)
+	circle.global_position = Vector3(global_position.x, 0.052, global_position.z)
+	for ring_index in range(2):
+		var ring := MeshInstance3D.new()
+		var torus := TorusMesh.new()
+		torus.inner_radius = 0.50 - ring_index * 0.15
+		torus.outer_radius = 0.56 - ring_index * 0.15
+		torus.rings = 40
+		torus.ring_segments = 7
+		torus.material = _vfx_material(Color(0.82, 0.92, 1.0, 0.42))
+		ring.mesh = torus
+		circle.add_child(ring)
+	for spoke_index in range(8):
+		var spoke := MeshInstance3D.new()
+		var spoke_mesh := BoxMesh.new()
+		spoke_mesh.size = Vector3(0.035, 0.018, 0.48)
+		spoke_mesh.material = _vfx_material(Color(0.78, 0.90, 1.0, 0.26))
+		spoke.mesh = spoke_mesh
+		spoke.position = Vector3(sin(TAU * spoke_index / 8.0), 0.0, cos(TAU * spoke_index / 8.0)) * 0.25
+		spoke.rotation.y = TAU * spoke_index / 8.0
+		circle.add_child(spoke)
+	var spin := circle.create_tween()
+	spin.tween_property(circle, "rotation:y", TAU * 1.35, duration)
+	spin.parallel().tween_property(circle, "scale", Vector3(0.82, 1.0, 0.82), duration)
+	spin.tween_callback(circle.queue_free)
+	_spawn_concentration_rings(0.78, duration, "ChuYingTeleportFocus")
+
+
+func _spawn_concentration_rings(radius: float, duration: float, effect_name: String) -> void:
+	var count := maxi(3, ceili(duration / 0.13))
+	for index in range(count):
+		var ring := MeshInstance3D.new()
+		ring.name = effect_name
+		ring.top_level = true
+		ring.add_to_group("transient_combat_vfx")
+		ring.add_to_group("concentration_rings")
+		ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		get_parent().add_child(ring)
+		ring.global_position = Vector3(global_position.x, 0.072 + index * 0.002, global_position.z)
+		var torus := TorusMesh.new()
+		torus.inner_radius = radius * 0.94
+		torus.outer_radius = radius
+		torus.rings = 56
+		torus.ring_segments = 7
+		torus.material = _vfx_material(Color(0.96, 0.99, 1.0, 0.50))
+		ring.mesh = torus
+		var delay := float(index) * duration / float(count)
+		var shrink_duration := minf(0.20, maxf(0.11, duration - delay))
+		var tween := ring.create_tween()
+		tween.tween_interval(delay)
+		tween.tween_property(ring, "scale", Vector3(0.12, 1.0, 0.12), shrink_duration).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tween.parallel().tween_property(ring, "transparency", 1.0, shrink_duration)
+		tween.tween_callback(ring.queue_free)
+
+
 func _spawn_chu_ying_teleport_ghost(position: Vector3) -> void:
+	_spawn_chu_ying_teleport_column(position)
 	var ghost := Sprite3D.new()
 	ghost.top_level = true
 	ghost.add_to_group("transient_combat_vfx")
@@ -1778,6 +1962,30 @@ func _spawn_chu_ying_teleport_ghost(position: Vector3) -> void:
 	tween.tween_property(ghost, "scale", Vector3(1.18, 1.08, 1.0), 0.24)
 	tween.parallel().tween_property(ghost, "modulate:a", 0.0, 0.24)
 	tween.tween_callback(ghost.queue_free)
+
+
+func _spawn_chu_ying_teleport_column(position: Vector3) -> void:
+	var column := MeshInstance3D.new()
+	column.name = "ChuYingTeleportColumn"
+	column.top_level = true
+	column.add_to_group("transient_combat_vfx")
+	column.add_to_group("chu_ying_teleport_columns")
+	column.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	get_parent().add_child(column)
+	column.global_position = Vector3(position.x, 1.25, position.z)
+	var mesh := CylinderMesh.new()
+	mesh.top_radius = 0.16
+	mesh.bottom_radius = 0.23
+	mesh.height = 2.5
+	mesh.radial_segments = 24
+	mesh.material = _vfx_material(Color(0.72, 0.88, 1.0, 0.34))
+	column.mesh = mesh
+	column.scale = Vector3(0.22, 0.65, 0.22)
+	var tween := column.create_tween()
+	tween.tween_property(column, "scale", Vector3(1.0, 1.0, 1.0), 0.10).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(column, "scale", Vector3(0.12, 1.10, 0.12), 0.26)
+	tween.parallel().tween_property(column, "transparency", 1.0, 0.26)
+	tween.tween_callback(column.queue_free)
 
 
 func _spawn_bear_melee_slash() -> void:
@@ -1800,40 +2008,41 @@ func _spawn_bear_melee_slash() -> void:
 
 
 func _spawn_bear_poison_sweep(radius: float) -> void:
-	var ring_visual := MeshInstance3D.new()
-	ring_visual.top_level = true
-	ring_visual.add_to_group("transient_combat_vfx")
-	get_parent().add_child(ring_visual)
-	ring_visual.global_position = Vector3(global_position.x, 0.10, global_position.z)
-	var ring := TorusMesh.new()
-	ring.inner_radius = radius * 0.78
-	ring.outer_radius = radius
-	ring.rings = 48
-	ring.ring_segments = 8
-	ring.material = _vfx_material(Color(0.34, 1.0, 0.30, 0.66))
-	ring_visual.mesh = ring
-	ring_visual.scale = Vector3.ONE * 0.28
-	var tween := ring_visual.create_tween()
-	tween.tween_property(ring_visual, "scale", Vector3.ONE * 1.08, 0.20).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tween.parallel().tween_property(ring_visual, "transparency", 1.0, 0.30)
-	tween.tween_callback(ring_visual.queue_free)
-	for index in range(6):
-		var angle := TAU * float(index) / 6.0
-		var blade := MeshInstance3D.new()
-		blade.top_level = true
-		blade.add_to_group("transient_combat_vfx")
-		get_parent().add_child(blade)
-		blade.global_position = global_position + Vector3(cos(angle), 0.58 + 0.08 * float(index % 2), sin(angle)) * radius * 0.52
-		var blade_mesh := BoxMesh.new()
-		blade_mesh.size = Vector3(0.36, 0.025, 0.045)
-		blade_mesh.material = _vfx_material(Color(0.60, 1.0, 0.42, 0.62))
-		blade.mesh = blade_mesh
-		blade.rotation.y = -angle
-		blade.rotation.z = -0.38 + 0.15 * float(index % 3)
-		var blade_tween := blade.create_tween()
-		blade_tween.tween_property(blade, "scale:x", 1.9, 0.12)
-		blade_tween.parallel().tween_property(blade, "transparency", 1.0, 0.26)
-		blade_tween.tween_callback(blade.queue_free)
+	# Five independently orbiting horizontal rings form a readable white whirlwind.
+	# Their centres are deliberately offset from the actor so the silhouette does
+	# not collapse into a stack of perfectly concentric circles.
+	for index in range(5):
+		var orbit := Node3D.new()
+		orbit.name = "BearWhirlwindOrbit_%d" % index
+		orbit.top_level = true
+		orbit.add_to_group("transient_combat_vfx")
+		get_parent().add_child(orbit)
+		orbit.global_position = Vector3(global_position.x, 0.0, global_position.z)
+		var ring_visual := MeshInstance3D.new()
+		ring_visual.name = "BearWhiteWhirlwindRing"
+		ring_visual.add_to_group("bear_whirlwind_rings")
+		ring_visual.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var level := float(index) / 4.0
+		var outer_radius := lerpf(radius * 0.34, radius * 0.82, level)
+		var ring := TorusMesh.new()
+		ring.inner_radius = outer_radius * 0.84
+		ring.outer_radius = outer_radius
+		ring.rings = 48
+		ring.ring_segments = 8
+		ring.material = _vfx_material(Color(0.94, 0.98, 1.0, lerpf(0.34, 0.56, level)))
+		ring_visual.mesh = ring
+		var orbit_radius := lerpf(0.07, 0.20, level)
+		ring_visual.position = Vector3(orbit_radius, lerpf(0.46, 1.48, level), 0.0)
+		ring_visual.scale = Vector3.ONE * 0.35
+		orbit.add_child(ring_visual)
+		var direction := -1.0 if index % 2 == 0 else 1.0
+		var tween := orbit.create_tween()
+		tween.tween_interval(index * 0.025)
+		tween.tween_property(ring_visual, "scale", Vector3.ONE, 0.10).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tween.parallel().tween_property(orbit, "rotation:y", direction * TAU * (1.15 + level * 0.55), 0.38)
+		tween.tween_property(ring_visual, "transparency", 1.0, 0.16)
+		tween.parallel().tween_property(ring_visual, "scale", Vector3(1.16, 0.35, 1.16), 0.16)
+		tween.tween_callback(orbit.queue_free)
 
 
 func _spawn_bear_stealth_puff() -> void:
@@ -1999,6 +2208,44 @@ func _spawn_swole_slam_wave(ability: AbilityDefinition) -> void:
 	tween.tween_callback(wave.queue_free)
 
 
+func _spawn_shield_bash_ghost(ability: AbilityDefinition) -> void:
+	var source_shield := visual_layer_sprites.get("shield_dog_shield") as Sprite3D
+	if source_shield == null:
+		return
+	var ghost := Sprite3D.new()
+	ghost.name = "ShieldBashGhost"
+	ghost.top_level = true
+	ghost.add_to_group("transient_combat_vfx")
+	ghost.texture = source_shield.texture
+	ghost.pixel_size = source_shield.pixel_size
+	ghost.offset = source_shield.offset
+	ghost.flip_h = facing.x < -0.05
+	if ghost.flip_h:
+		ghost.offset.x = -ghost.offset.x
+	ghost.billboard = BaseMaterial3D.BILLBOARD_DISABLED
+	ghost.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
+	ghost.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ghost.modulate = Color(0.78, 0.91, 1.0, 0.60)
+	ghost.set_meta("initial_opacity", ghost.modulate.a)
+	get_parent().add_child(ghost)
+	var direction := facing.normalized()
+	var start := global_position + direction * 0.26 + Vector3.UP * 0.86
+	var finish := global_position + direction * (ability.hitbox_distance + ability.hitbox_size.z * 0.5) + Vector3.UP * 0.86
+	ghost.global_position = start
+	var active_camera := get_viewport().get_camera_3d()
+	var facing_sign := -1.0 if ghost.flip_h else 1.0
+	var ghost_scale := Vector3.ONE * 2.45
+	if active_camera != null:
+		ghost.global_basis = active_camera.global_basis.orthonormalized() * Basis(Vector3.BACK, facing_sign * -0.06) * Basis.from_scale(ghost_scale)
+	else:
+		ghost.rotation.z = facing_sign * -0.06
+		ghost.scale = ghost_scale
+	var tween := ghost.create_tween()
+	tween.tween_property(ghost, "global_position", finish, maxf(ability.active, 0.12)).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(ghost, "modulate:a", 0.0, maxf(ability.active, 0.12))
+	tween.tween_callback(ghost.queue_free)
+
+
 func _spawn_magic_circle(ability: AbilityDefinition, duration: float) -> void:
 	if is_instance_valid(active_magic_circle):
 		active_magic_circle.queue_free()
@@ -2133,7 +2380,7 @@ func _spawn_katana_afterimage() -> void:
 func _spawn_dimensional_cut(ability: AbilityDefinition, pulse_index: int) -> void:
 	# Damage still pulses four times, but the cut field is one continuous two-second effect.
 	if pulse_index == 1:
-		var line_count := 36
+		var line_count := 22
 		for line_index in range(line_count):
 			_spawn_dimensional_line(ability, line_index, line_count)
 	var ghost_angle := visual_rng.randf_range(0.0, TAU)
@@ -2147,10 +2394,17 @@ func _spawn_dimensional_line(ability: AbilityDefinition, line_index: int, line_c
 	var line := MeshInstance3D.new()
 	line.name = "DimensionalCutLine"
 	line.add_to_group("transient_combat_vfx")
+	line.add_to_group("dimensional_cut_lines")
 	line.top_level = true
 	get_parent().add_child(line)
-	var radial_angle := visual_rng.randf_range(0.0, TAU)
-	var radial_distance := visual_rng.randf_range(0.0, ability.hitbox_radius * 0.52)
+	# A golden-angle sequence prevents accidental angular clumps. A power below
+	# 0.5 deliberately shifts more line centres toward the outside of the field,
+	# avoiding the dense centre produced by a uniformly sampled radius.
+	const GOLDEN_ANGLE := 2.39996323
+	var radial_rank := (line_index * 7) % maxi(line_count, 1)
+	var radial_sample := (float(radial_rank) + visual_rng.randf_range(0.18, 0.82)) / maxf(float(line_count), 1.0)
+	var radial_angle := fposmod(float(line_index) * GOLDEN_ANGLE + visual_rng.randf_range(-0.18, 0.18), TAU)
+	var radial_distance := ability.hitbox_radius * 0.82 * pow(radial_sample, 0.36)
 	var center_offset := Vector3(cos(radial_angle), 0.0, sin(radial_angle)) * radial_distance
 	line.global_position = global_position + center_offset + Vector3.UP * visual_rng.randf_range(0.30, 1.42)
 	var yaw := visual_rng.randf_range(0.0, TAU)
@@ -2158,7 +2412,7 @@ func _spawn_dimensional_line(ability: AbilityDefinition, line_index: int, line_c
 	var line_direction := Vector3(cos(yaw) * cos(elevation), sin(elevation), sin(yaw) * cos(elevation)).normalized()
 	line.quaternion = Quaternion(Vector3.UP, line_direction)
 	var line_mesh := CylinderMesh.new()
-	line_mesh.top_radius = visual_rng.randf_range(0.018, 0.032)
+	line_mesh.top_radius = visual_rng.randf_range(0.012, 0.024)
 	line_mesh.bottom_radius = line_mesh.top_radius
 	line_mesh.height = ability.hitbox_radius * visual_rng.randf_range(1.45, 2.15)
 	line_mesh.radial_segments = 8
@@ -2178,6 +2432,21 @@ func _spawn_dimensional_line(ability: AbilityDefinition, line_index: int, line_c
 	line_tween.tween_property(line, "scale", Vector3(0.06, 1.04, 0.06), 0.5)
 	line_tween.parallel().tween_property(line, "transparency", 1.0, 0.5)
 	line_tween.tween_callback(line.queue_free)
+
+
+func _update_dimensional_visual_motion(delta: float, radius: float) -> void:
+	if dimensional_visual_segment_remaining <= 0.0:
+		dimensional_visual_from = dimensional_visual_offset
+		var angle := visual_rng.randf_range(0.0, TAU)
+		# Keep most destinations away from the centre so the model cuts across the
+		# whole magic circle instead of oscillating around one axis.
+		var distance := radius * 0.82 * pow(visual_rng.randf(), 0.34)
+		dimensional_visual_to = Vector3(cos(angle), 0.0, sin(angle)) * distance
+		dimensional_visual_segment_duration = visual_rng.randf_range(0.075, 0.14)
+		dimensional_visual_segment_remaining = dimensional_visual_segment_duration
+	dimensional_visual_segment_remaining = maxf(0.0, dimensional_visual_segment_remaining - delta)
+	var progress := 1.0 - dimensional_visual_segment_remaining / maxf(dimensional_visual_segment_duration, 0.001)
+	dimensional_visual_offset = dimensional_visual_from.lerp(dimensional_visual_to, progress)
 
 
 func _spawn_afterimage(offset: Vector3) -> void:
@@ -2262,6 +2531,16 @@ func _on_periodic_damage(amount: float, _source_actor_id: int, _effect_id: Strin
 func _mark_defeated() -> void:
 	if is_defeated:
 		return
+	if current_ability != null:
+		_cancel_current_ability()
+	roll_remaining = 0.0
+	invulnerable_remaining = 0.0
+	dash_remaining = 0.0
+	nailoong_leap_remaining = 0.0
+	nailoong_fire_emit_remaining = 0.0
+	move_intent = Vector2.ZERO
+	velocity = Vector3.ZERO
+	knockback_velocity = Vector3.ZERO
 	is_defeated = true
 	collision_layer = 0
 	death_visual_elapsed = 0.0
@@ -2424,6 +2703,7 @@ func _update_visual_layers() -> void:
 		layer_sprite.flip_h = mirror_texture
 		layer_sprite.position.x = layer.offset.x * facing_sign
 		layer_sprite.position.y = layer.offset.y
+		layer_sprite.position.z = float(layer.render_priority) * 0.025
 		# Keep the handle/pivot anchored when the source image is mirrored.
 		layer_sprite.offset.x = -layer.texture_offset.x if mirror_texture else layer.texture_offset.x
 		layer_sprite.offset.y = layer.texture_offset.y
@@ -2439,7 +2719,8 @@ func _update_visual_layers() -> void:
 			if layer.hide_during_actions.has(action_id):
 				visible = false
 		layer_sprite.visible = visible and not is_defeated
-		layer_sprite.position.x += dimensional_visual_offset_x
+		layer_sprite.position.x += dimensional_visual_offset.x
+		layer_sprite.position.z += dimensional_visual_offset.z
 		layer_sprite.modulate = Color.WHITE
 		if status_controller.has_tag("untargetable") and layer.layer_id != "katana_action":
 			layer_sprite.modulate.a = 0.26

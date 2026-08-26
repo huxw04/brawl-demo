@@ -21,6 +21,17 @@ Validate all project scripts without opening a window:
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
+Create the Windows x86-64 classroom playtest package after installing the
+matching Godot 4.7.2 export templates:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1
+```
+
+The distributable ZIP is written to
+`dist/BrawlDemo-v0.1-windows-x86_64.zip`. The generated `dist/` directory and
+local export templates are intentionally excluded from Git.
+
 The launcher opens two shared-logic scenes:
 
 - **Character Lab**: switch heroes, use the same MOBA controls as combat, trigger

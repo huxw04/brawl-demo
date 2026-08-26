@@ -50,7 +50,9 @@ func _run() -> void:
 	hero.facing = Vector3.RIGHT
 	var basic_hp := target.hp
 	_check(hero.try_ability("basic"), "tail basic should cast")
-	await _frames(22)
+	await _frames(9)
+	_check(get_nodes_in_group("transient_combat_vfx").any(func(node: Node) -> bool: return node.name == "NailoongBasicShockwave"), "tail basic should use a white range shockwave")
+	await _frames(13)
 	_check(is_equal_approx(basic_hp - target.hp, 10.0), "tail basic should deal 10 damage")
 
 	await _reset(Vector3(5.8, 0.0, 0.0), Vector3.ZERO)
@@ -71,9 +73,41 @@ func _run() -> void:
 	_check(hero.try_ability("skill_q"), "steering test roll should start")
 	await _frames(6)
 	hero.set_move_intent(Vector2(0.0, -1.0))
-	await _frames(60)
+	await _frames(12)
 	var steered_angle := Vector3.RIGHT.angle_to(hero.nailoong_roll_direction)
-	_check(steered_angle > 0.42 and steered_angle < 0.58, "roll steering should be capped near 0.5 rad per second (actual %.3f)" % steered_angle)
+	_check(steered_angle > 1.15 and steered_angle < 1.37, "roll steering should be capped at one full turn per second (actual %.3f after 0.2s)" % steered_angle)
+
+	await _reset(Vector3.ZERO, Vector3(3.0, 0.0, 0.0))
+	hero.facing = Vector3.RIGHT
+	_check(hero.try_ability("skill_q"), "far-click steering roll should start")
+	await _frames(6)
+	var roll_pathfinder := ArenaPathfinder.new()
+	roll_pathfinder.configure([])
+	var roll_motor := CommandMotor.new()
+	root.add_child(roll_motor)
+	roll_motor.setup(hero, roll_pathfinder)
+	var far_destination := Vector3(6.0, 0.0, 6.0)
+	var far_command := BattleCommand.create(hero.battle_id, BattleCommand.Type.MOVE_TO, far_destination)
+	var starting_distance := hero.global_position.distance_to(far_destination)
+	_check(roll_motor.apply_command(far_command) and roll_motor.direct_steering_destination, "rolling move command should steer toward the real click instead of an A-star waypoint")
+	for _index in range(48):
+		roll_motor.advance_movement()
+		await physics_frame
+	var remaining_direction := far_destination - hero.global_position
+	remaining_direction.y = 0.0
+	_check(hero.global_position.distance_to(far_destination) < starting_distance - 2.0, "far-click roll should make sustained progress instead of spinning around a stale waypoint")
+	_check(hero.nailoong_roll_direction.dot(remaining_direction.normalized()) > 0.55, "far-click roll direction should keep converging on the true destination")
+	roll_motor.queue_free()
+
+	await _reset(Vector3.ZERO, Vector3(2.0, 0.0, 0.0))
+	hero.facing = Vector3.RIGHT
+	_check(hero.try_ability("skill_q"), "death test roll should start")
+	await _frames(8)
+	var death_position := hero.global_position
+	_check(hero.receive_hit(target, target.definition.ability_by_id("basic"), Vector3.LEFT, 7102, 1000.0), "lethal hit should land during rolling")
+	_check(hero.is_defeated and hero.current_ability == null, "death should cancel the rolling ability immediately")
+	await _frames(20)
+	_check(hero.global_position.distance_to(death_position) < 0.02, "dead Nailoong should not continue rolling")
 
 	await _reset(Vector3.ZERO, Vector3(2.2, 0.0, 0.0))
 	hero.facing = Vector3.RIGHT
@@ -105,13 +139,16 @@ func _run() -> void:
 	_check(hero.global_position.x > 2.65 and hero.global_position.x <= 3.05, "leap should travel no farther than 300 yards")
 	_check(is_equal_approx(leap_hp - target.hp, 10.0), "leap landing should deal 10 damage")
 	_check(target.status_controller.multiplier("move_speed") <= 0.81, "leap landing should apply 20 percent slow")
+	_check(get_nodes_in_group("transient_combat_vfx").any(func(node: Node) -> bool: return node.name == "NailoongLandingShockwave"), "leap landing should use a white shockwave")
 
 	await _reset(Vector3.ZERO, Vector3(3.0, 0.0, 0.0))
 	hero.hp = 60.0
 	_check(hero.try_ability("ultimate"), "laugh ultimate should cast")
 	await _frames(55)
 	_check(is_equal_approx(hero.hp, 60.0), "laugh should not heal before its one-second windup finishes")
-	await _frames(320)
+	await _frames(40)
+	_check(not get_nodes_in_group("nailoong_heal_crosses").is_empty(), "laugh healing ticks should raise green cross symbols")
+	await _frames(280)
 	_check(is_equal_approx(hero.hp, 140.0), "laugh should heal 8 health ten times over five seconds")
 
 	hero.queue_free()

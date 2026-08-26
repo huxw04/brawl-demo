@@ -87,6 +87,12 @@ func _run() -> void:
 	var poison_expected := (target.definition.max_hp - target.hp) * 0.15
 	_check(hero.try_ability("skill_w"), "poison mark should cast")
 	await _frames(14)
+	var whirlwind_rings := get_nodes_in_group("bear_whirlwind_rings")
+	_check(whirlwind_rings.size() >= 3, "W should show several overlapping white whirlwind rings")
+	if not whirlwind_rings.is_empty():
+		var whirlwind_mesh := (whirlwind_rings[0] as MeshInstance3D).mesh as TorusMesh
+		var whirlwind_material := whirlwind_mesh.material as StandardMaterial3D
+		_check(whirlwind_material.albedo_color.r > 0.9 and whirlwind_material.albedo_color.b > 0.9, "W whirlwind should be white instead of the old green sweep")
 	_check(target.status_controller.has_tag("stunned"), "poison mark should stun for one second")
 	_check(is_equal_approx(target.hp, 100.0), "poison mark should have no immediate damage (actual HP %.2f)" % target.hp)
 	_check(target.pending_damage_events.size() == 1, "poison mark should queue one delayed hit")

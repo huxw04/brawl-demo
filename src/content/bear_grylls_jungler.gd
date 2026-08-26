@@ -9,10 +9,9 @@ static func create() -> HeroDefinition:
 	hero.theme_color = Color("6da86b")
 	hero.max_hp = 145.0
 	hero.move_speed = 3.65
-	hero.max_energy = 100.0
-	hero.status_bar_id = "stealth"
-	hero.status_bar_label = "STEALTH"
-	hero.status_bar_color = Color("75d69a")
+	hero.max_energy = 0.0
+	hero.status_bar_id = ""
+	hero.status_bar_label = ""
 	hero.body_radius = 0.34
 	hero.body_height = 1.74
 	hero.jump_speed = 6.7
@@ -122,6 +121,9 @@ static func create() -> HeroDefinition:
 	grapple.breaks_stealth = false
 	grapple.vfx_id = "bear_grapple"
 	grapple.color = Color("bcc9bf")
+	grapple.targeting_preview = "line"
+	grapple.targeting_preview_range = 5.0
+	grapple.targeting_preview_width = grapple.projectile_radius * 2.0
 
 	var ambush := AbilityDefinition.new()
 	ambush.ability_id = "ultimate"
@@ -135,6 +137,8 @@ static func create() -> HeroDefinition:
 	ambush.target_required_range = 5.0
 	ambush.vfx_id = "bear_ambush"
 	ambush.color = Color("e8f3e8")
+	ambush.targeting_preview = "unit"
+	ambush.targeting_preview_range = ambush.target_required_range
 
 	hero.abilities = [ranged_basic, stealth, poison, grapple, ambush]
 	return hero

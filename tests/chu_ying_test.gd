@@ -40,6 +40,7 @@ func _run() -> void:
 	_check(is_equal_approx(w.cooldown, 8.0) and is_equal_approx(w.hitbox_radius, 0.5), "W should use an eight-second cooldown and 50-yard impact")
 	_check(is_equal_approx(e.target_required_range, 10.0) and is_equal_approx(e.startup, 1.0), "E should teleport up to 1000 yards after one second")
 	_check(is_equal_approx(ultimate.target_required_range, 5.0) and is_equal_approx(ultimate.cooldown, 30.0), "R should select within 500 yards and have 30 second cooldown")
+	_check(hero.definition.status_bar_id.is_empty() and not hero.energy_label.visible, "Chu Ying should keep Q charge data without showing a white energy bar")
 
 	var hp_before := target.hp
 	hero.set_ability_target(target.global_position)
@@ -68,7 +69,10 @@ func _run() -> void:
 	hp_before = target.hp
 	hero.set_ability_target(Vector3(4.0, 0.0, 0.0))
 	_check(hero.try_ability("skill_w"), "W should summon a board")
-	await _frames(35)
+	await _frames(13)
+	_check(get_nodes_in_group("chu_ying_board_rectangles").size() == 1, "W should render one small barrier-style rectangle")
+	_check(get_nodes_in_group("chu_ying_light_walls").size() == 4, "W rectangle should have four vertically fading light walls")
+	await _frames(22)
 	_check(is_equal_approx(hp_before - target.hp, 10.0), "a pulled stone should deal ten damage along its path")
 	_check(get_nodes_in_group("chu_ying_stones").is_empty(), "pulled stone should be consumed at the board")
 
@@ -77,11 +81,15 @@ func _run() -> void:
 	_check(hero.try_ability("skill_e"), "E should begin its protected channel")
 	await _frames(2)
 	_check(hero.status_controller.has_tag("control_immune"), "E should grant super armor during its one-second startup")
-	await _frames(68)
+	_check(get_nodes_in_group("chu_ying_teleport_charge").size() == 1 and get_nodes_in_group("concentration_rings").size() >= 3, "E startup should show a rotating floor circle and repeated inward focus rings")
+	await _frames(60)
 	_check(hero.global_position.x > 5.3 and hero.global_position.x < 5.7, "E should teleport to the selected point (actual %.2f)" % hero.global_position.x)
+	_check(get_nodes_in_group("chu_ying_teleport_columns").size() == 2, "E should create one light column at both departure and arrival")
+	await _frames(8)
 
-	await _reset(Vector3.ZERO, Vector3(2.5, 0.0, 0.0))
-	hero.set_ability_target(Vector3(4.0, 0.0, 0.0))
+	# Origin and the selected point are opposite corners of a 4-by-3 rectangle.
+	await _reset(Vector3.ZERO, Vector3(3.6, 0.0, 1.2))
+	hero.set_ability_target(Vector3(4.0, 0.0, 3.0))
 	_check(hero.try_ability("ultimate"), "R should begin")
 	await _frames(36)
 	_check(target.global_position.y > 0.05 or target.hurt_remaining > 0.25, "R should knock up enemies inside after 0.5 seconds")
@@ -89,13 +97,29 @@ func _run() -> void:
 	_check(barriers.size() == 1, "R should create one persistent barrier")
 	if not barriers.is_empty():
 		var barrier := barriers[0] as ChuYingBarrier
-		_check(is_equal_approx(barrier.radius, 2.0) and barrier.trapped.has(target), "R circle should use caster-to-point as its diameter and snapshot initial occupants")
-		target.global_position = Vector3(6.0, 0.0, 0.0)
-		await _frames(2)
+		_check(barrier.half_extents.is_equal_approx(Vector2(2.0, 1.5)) and barrier.trapped.has(target), "R should use the two points as opposite rectangle corners")
+		_check(get_nodes_in_group("chu_ying_light_walls").size() == 4, "R should surround its rectangle with four vertically fading light walls")
+		var move_stream := BattleCommandStream.new()
+		root.add_child(move_stream)
+		var move_pathfinder := ArenaPathfinder.new()
+		move_pathfinder.configure([])
+		var move_runtime := BattleCommandRuntime.new()
+		root.add_child(move_runtime)
+		move_runtime.setup(move_stream, move_pathfinder)
+		move_runtime.register_actor(target)
+		move_stream.submit(BattleCommand.create(target.battle_id, BattleCommand.Type.MOVE_TO, Vector3(6.0, 0.0, 3.0)))
+		await _frames(90)
 		var planar := target.global_position - barrier.global_position
-		planar.y = 0.0
-		_check(planar.length() < barrier.radius, "trapped enemy should be clamped inside the barrier")
-		_check(barrier.remaining > 14.0, "barrier should persist for fifteen seconds")
+		_check(absf(planar.x) < barrier.half_extents.x and absf(planar.z) < barrier.half_extents.y, "AI movement commands should remain clamped inside the rectangle")
+		_check(barrier.remaining > 12.5, "barrier should persist while AI repeatedly tries to leave")
+		move_runtime.queue_free()
+		move_stream.queue_free()
+
+	var minimum_barrier := ChuYingBarrier.new()
+	root.add_child(minimum_barrier)
+	minimum_barrier.configure(hero, Vector3(8.0, 0.0, 8.0), Vector2(0.02, 0.08), 9999)
+	_check(minimum_barrier.half_extents.is_equal_approx(Vector2(0.5, 0.5)), "R should enforce a minimum full size of 100 by 100 yards")
+	minimum_barrier.queue_free()
 
 	var actors: Array[CombatActor] = [hero, target]
 	var digest := BattleStateDigest.build(1, actors, BattleRng.new(12345))

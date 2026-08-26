@@ -2,6 +2,9 @@ extends Node3D
 
 const ActorScript = preload("res://src/combat/combat_actor.gd")
 const ArenaScript = preload("res://src/presentation/arena_world.gd")
+const CommandRuntimeScript = preload("res://src/commands/battle_command_runtime.gd")
+const MoveIndicatorScript = preload("res://src/presentation/move_destination_indicator.gd")
+const TargetingPreviewScript = preload("res://src/presentation/ability_targeting_preview.gd")
 
 var hero: CombatActor
 var dummy: CombatActor
@@ -11,6 +14,9 @@ var bypass_check: CheckButton
 var event_lines: Array[String] = []
 var arena: ArenaWorld
 var command_stream: BattleCommandStream
+var command_runtime: BattleCommandRuntime
+var move_indicator: MoveDestinationIndicator
+var targeting_preview: AbilityTargetingPreview
 var motor: CommandMotor
 var player_controller: MobaPlayerController
 var pathfinder: ArenaPathfinder
@@ -26,6 +32,18 @@ func _ready() -> void:
 	add_child(command_stream)
 	pathfinder = ArenaPathfinder.new()
 	pathfinder.configure(arena.navigation_obstacles)
+	command_runtime = CommandRuntimeScript.new() as BattleCommandRuntime
+	command_runtime.name = "BattleCommandRuntime"
+	add_child(command_runtime)
+	command_runtime.setup(command_stream, pathfinder)
+	command_runtime.movement_destination_resolved.connect(_on_movement_destination_resolved)
+	command_runtime.command_processed.connect(_on_hero_command_processed)
+	move_indicator = MoveIndicatorScript.new() as MoveDestinationIndicator
+	move_indicator.name = "MoveDestinationIndicator"
+	add_child(move_indicator)
+	targeting_preview = TargetingPreviewScript.new() as AbilityTargetingPreview
+	targeting_preview.name = "AbilityTargetingPreview"
+	add_child(targeting_preview)
 	_spawn_lab_hero("cheems_samurai")
 	dummy = ActorScript.new() as CombatActor
 	add_child(dummy)
@@ -96,14 +114,14 @@ func _build_lab_ui() -> void:
 	action_grid.add_theme_constant_override("h_separation", 7)
 	action_grid.add_theme_constant_override("v_separation", 7)
 	column.add_child(action_grid)
-	_add_action_button(action_grid, "普攻", func() -> void: hero.try_ability("basic", bypass_check.button_pressed))
-	_add_action_button(action_grid, "Q 技能", func() -> void: hero.try_ability("skill_q", bypass_check.button_pressed))
-	_add_action_button(action_grid, "松开 Q", func() -> void: hero.release_held_ability("skill_q"))
-	_add_action_button(action_grid, "W 技能", func() -> void: hero.try_ability("skill_w", bypass_check.button_pressed))
-	_add_action_button(action_grid, "松开 W", func() -> void: hero.release_held_ability("skill_w"))
-	_add_action_button(action_grid, "E 技能", func() -> void: hero.try_ability("skill_e", bypass_check.button_pressed))
-	_add_action_button(action_grid, "R 大招", func() -> void: hero.try_ability("ultimate", bypass_check.button_pressed))
-	_add_action_button(action_grid, "跳跃", func() -> void: hero.try_jump(bypass_check.button_pressed))
+	_add_action_button(action_grid, "普攻", func() -> void: _submit_lab_ability("basic"))
+	_add_action_button(action_grid, "Q 技能", func() -> void: _submit_lab_ability("skill_q"))
+	_add_action_button(action_grid, "松开 Q", func() -> void: _submit_lab_release("skill_q"))
+	_add_action_button(action_grid, "W 技能", func() -> void: _submit_lab_ability("skill_w"))
+	_add_action_button(action_grid, "松开 W", func() -> void: _submit_lab_release("skill_w"))
+	_add_action_button(action_grid, "E 技能", func() -> void: _submit_lab_ability("skill_e"))
+	_add_action_button(action_grid, "R 大招", func() -> void: _submit_lab_ability("ultimate"))
+	_add_action_button(action_grid, "跳跃", _submit_lab_jump)
 	_add_action_button(action_grid, "翻滚", _lab_roll)
 	_add_action_button(action_grid, "假人跳跃", func() -> void: dummy.try_jump(true))
 	_add_action_button(action_grid, "假人靠近", func() -> void: dummy.global_position = hero.global_position + hero.facing * 1.25)
@@ -168,18 +186,55 @@ func _add_action_button(parent: GridContainer, text: String, callback: Callable)
 	parent.add_child(button)
 
 
-func _physics_process(_delta: float) -> void:
-	if command_stream == null or motor == null:
-		return
-	for command in command_stream.advance_tick():
-		motor.apply_command(command)
-	motor.advance_movement()
-
-
 func _lab_roll() -> void:
-	var direction := Vector2(hero.facing.x, hero.facing.z)
-	hero.set_move_intent(direction)
-	hero.try_roll(bypass_check.button_pressed)
+	if hero == null:
+		return
+	hero.ignore_ability_requirements = bypass_check != null and bypass_check.button_pressed
+	var command := BattleCommand.create(hero.battle_id, BattleCommand.Type.ROLL)
+	command.direction = hero.facing
+	command_stream.submit(command)
+
+
+func _on_movement_destination_resolved(actor_id: int, requested: Vector3, resolved: Vector3, reachable: bool) -> void:
+	if hero != null and actor_id == hero.battle_id and move_indicator != null:
+		move_indicator.show_destination(requested, resolved, reachable)
+
+
+func _on_hero_command_processed(command: BattleCommand, accepted: bool) -> void:
+	if not accepted or hero == null or command.actor_id != hero.battle_id or move_indicator == null:
+		return
+	if command.type != BattleCommand.Type.MOVE_TO:
+		move_indicator.clear_destination(true)
+
+
+func _submit_lab_jump() -> void:
+	if hero == null:
+		return
+	command_stream.submit(BattleCommand.create(hero.battle_id, BattleCommand.Type.JUMP))
+
+
+func _submit_lab_ability(ability_id: String) -> void:
+	if hero == null:
+		return
+	hero.ignore_ability_requirements = bypass_check != null and bypass_check.button_pressed
+	var ability := hero.ability_by_id(ability_id)
+	if ability == null or ability.disabled:
+		return
+	var target := hero.global_position + hero.facing
+	if dummy != null and is_instance_valid(dummy):
+		target = dummy.global_position
+	var type := BattleCommand.Type.BEGIN_ABILITY if ability.hold_to_channel else BattleCommand.Type.CAST_ABILITY
+	var command := BattleCommand.create(hero.battle_id, type, target)
+	command.ability_id = ability_id
+	command_stream.submit(command)
+
+
+func _submit_lab_release(ability_id: String) -> void:
+	if hero == null:
+		return
+	var command := BattleCommand.create(hero.battle_id, BattleCommand.Type.END_ABILITY)
+	command.ability_id = ability_id
+	command_stream.submit(command)
 
 
 func _lab_defeat() -> void:
@@ -203,8 +258,11 @@ func _process(_delta: float) -> void:
 			hero.cooldowns[ability_id] = 0.0
 		if resources_changed:
 			hero.resource_changed.emit(hero)
-	status_label.text = "英雄：%s\nHP %.0f/%.0f  体力 %.0f  能量 %.0f\n世界坐标 (%.2f, %.2f, %.2f)\n状态：%s\nCD  Q %.1f / W %.1f / E %.1f / R %.1f" % [
-		hero.definition.display_name, hero.hp, hero.definition.max_hp, hero.stamina, hero.energy,
+	var resource_text := "体力 %.0f" % hero.stamina
+	if hero.definition.max_energy > 0.0 and not hero.definition.status_bar_id.is_empty():
+		resource_text += "  %s %.0f" % [hero.definition.status_bar_label, hero.energy]
+	status_label.text = "英雄：%s\nHP %.0f/%.0f  %s\n世界坐标 (%.2f, %.2f, %.2f)\n状态：%s\nCD  Q %.1f / W %.1f / E %.1f / R %.1f" % [
+		hero.definition.display_name, hero.hp, hero.definition.max_hp, resource_text,
 		hero.global_position.x, hero.global_position.y, hero.global_position.z, hero.status_text(),
 		float(hero.cooldowns.get("skill_q", 0.0)), float(hero.cooldowns.get("skill_w", 0.0)),
 		float(hero.cooldowns.get("skill_e", 0.0)), float(hero.cooldowns.get("ultimate", 0.0)),
@@ -226,10 +284,10 @@ func _spawn_lab_hero(hero_id: String) -> void:
 	if hero != null:
 		spawn_position = hero.global_position
 		hero.queue_free()
-	if motor != null:
-		motor.queue_free()
 	if player_controller != null:
 		player_controller.queue_free()
+	if command_runtime != null:
+		command_runtime.unregister_actor(1)
 	command_stream.reset()
 	hero = ActorScript.new() as CombatActor
 	add_child(hero)
@@ -241,12 +299,12 @@ func _spawn_lab_hero(hero_id: String) -> void:
 	hero.global_position = spawn_position
 	hero.facing = Vector3.RIGHT
 	_connect_events(hero)
-	motor = CommandMotor.new()
-	add_child(motor)
-	motor.setup(hero, pathfinder)
+	motor = command_runtime.register_actor(hero)
+	move_indicator.setup(hero)
 	player_controller = MobaPlayerController.new()
 	add_child(player_controller)
 	player_controller.setup(hero, arena, command_stream)
+	targeting_preview.setup(hero, player_controller)
 	_log("切换调试角色：%s" % definition.display_name)
 
 
@@ -262,6 +320,10 @@ func _speed_selected(index: int) -> void:
 func _reset_lab() -> void:
 	for effect in get_tree().get_nodes_in_group("transient_combat_vfx"):
 		effect.queue_free()
+	command_stream.reset()
+	command_runtime.stop_all()
+	move_indicator.clear_destination()
+	targeting_preview.clear()
 	hero.reset_runtime(Vector3(-3.5, 0.05, 0.8))
 	dummy.reset_runtime(Vector3(0.2, 0.05, 0.8))
 	hero.facing = Vector3.RIGHT

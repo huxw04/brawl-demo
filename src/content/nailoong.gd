@@ -68,6 +68,9 @@ static func create() -> HeroDefinition:
 	leap.active_duration_override = 0.12
 	leap.vfx_id = "nailoong_leap"
 	leap.color = Color("ffd657")
+	leap.targeting_preview = "leap"
+	leap.targeting_preview_range = 3.0
+	leap.targeting_preview_radius = leap.hitbox_radius
 
 	var laugh := _ability("ultimate", "大笑回血", 1.0, 0.02, 0.0, 30.0)
 	laugh.damage = 0.0

@@ -57,6 +57,9 @@ static func create() -> HeroDefinition:
 	q.energy_on_hit = 0.0
 	q.vfx_id = "sword_wave"
 	q.color = Color("b9efff")
+	q.targeting_preview = "line"
+	q.targeting_preview_range = 6.0
+	q.targeting_preview_width = q.projectile_radius * 2.0
 
 	var w := AbilityDefinition.new()
 	w.ability_id = "skill_w"
@@ -79,6 +82,7 @@ static func create() -> HeroDefinition:
 	w.locks_movement = true
 	w.vfx_id = "multi_slash"
 	w.color = Color("ffd58a")
+	w.targeting_preview = "box"
 
 	var e := AbilityDefinition.new()
 	e.ability_id = "skill_e"
@@ -99,6 +103,9 @@ static func create() -> HeroDefinition:
 	e.energy_on_hit = 8.0
 	e.vfx_id = "dash_slash"
 	e.color = Color("8de7ff")
+	e.targeting_preview = "dash"
+	e.targeting_preview_range = e.dash_distance
+	e.targeting_preview_width = e.hitbox_size.x
 
 	var r := AbilityDefinition.new()
 	r.ability_id = "ultimate"

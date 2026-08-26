@@ -82,6 +82,16 @@ extends Resource
 @export var target_required_range := 0.0
 @export var target_delayed_damage_delay := 0.0
 @export var target_delayed_missing_hp_ratio := 0.0
+# Local-only aiming presentation. These values describe how existing combat
+# geometry is previewed; they never participate in hit resolution.
+@export_enum("none", "line", "box", "dash", "point", "leap", "unit", "barrier") var targeting_preview := "none"
+@export var targeting_preview_range := 0.0
+@export var targeting_preview_width := 0.0
+@export var targeting_preview_radius := 0.0
+@export var targeting_preview_secondary_radius := 0.0
+# Instant movement skills may serialize the current move direction and use it
+# instead of requiring a second mouse confirmation.
+@export var face_move_direction_on_cast := false
 
 
 func total_duration() -> float:

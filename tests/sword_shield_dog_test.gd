@@ -61,50 +61,82 @@ func _run() -> void:
 	await _frames(25)
 	_check(is_equal_approx(target_hp - target.hp, 15.0), "heavy chop first pulse should deal 15")
 	_check(hero.current_ability == null, "heavy chop actor action should end immediately after the first slam")
+	var delayed_attacks := hero.get_tree().get_nodes_in_group("transient_combat_vfx").filter(func(node: Node) -> bool: return node is DelayedGroundAttack)
+	_check(delayed_attacks.size() == 1, "heavy chop should leave one world-anchored delayed sword")
+	if not delayed_attacks.is_empty():
+		var delayed_attack := delayed_attacks[0] as DelayedGroundAttack
+		var planted_sword := delayed_attack.get_node_or_null("EmbeddedHeavySword") as Sprite3D
+		_check(planted_sword != null and planted_sword.scale.length() > Vector3.ONE.length(), "heavy chop should leave a visibly enlarged sword in the ground")
+		_check(planted_sword != null and planted_sword.position.y > 0.75, "right-facing planted sword should be lifted clear of the ground")
+		var glow := planted_sword.get_node_or_null("EmbeddedHeavySwordGlow") as Sprite3D if planted_sword != null else null
+		_check(glow != null and glow.material_override is ShaderMaterial, "planted sword should have an additive charge glow")
+		_check(delayed_attack.get_node_or_null("DelayedGroundCircle") == null, "heavy chop should no longer use the red ground indicator")
 	# Moving after the slam must not drag the delayed ground explosion along.
 	hero.global_position = Vector3(-4.0, 0.0, 0.0)
-	await _frames(87)
+	await _frames(78)
+	if not delayed_attacks.is_empty() and is_instance_valid(delayed_attacks[0]):
+		var charged_glow := (delayed_attacks[0] as DelayedGroundAttack).glow_overlay
+		var glow_strength := float((charged_glow.material_override as ShaderMaterial).get_shader_parameter("strength")) if charged_glow != null else 0.0
+		_check(glow_strength > 0.05, "planted sword should visibly brighten before its delayed explosion")
+	await _frames(9)
 	_check(is_equal_approx(target_hp - target.hp, 35.0), "heavy chop world-anchored second hit should raise total damage to 35")
 
 	hero.reset_runtime(Vector3.ZERO)
 	target.reset_runtime(Vector3(0.8, 0.0, 0.0))
 	hero.facing = Vector3.RIGHT
 	await _frames(4)
-	_check(hero.try_ability("skill_e", true), "shield bash should start")
+	var bash := hero.definition.ability_by_id("skill_e")
+	_check(bash.hitbox_size.x > 2.09 and bash.hitbox_size.z > 1.64 and bash.total_duration() < 0.43, "shield bash should use the larger, faster one-shot action")
 	var bash_start_x := target.global_position.x
-	await _frames(16)
+	_check(hero.try_ability("skill_e", true), "shield bash should start")
+	await _frames(8)
+	var shield_ghosts := hero.get_tree().get_nodes_in_group("transient_combat_vfx").filter(func(node: Node) -> bool: return node.name == "ShieldBashGhost")
+	_check(shield_ghosts.size() == 1 and absf(float(shield_ghosts[0].get_meta("initial_opacity", 0.0)) - 0.60) < 0.02, "shield bash ghost should start at 40 percent transparency")
+	await _frames(2)
 	_check(not target.status_controller.has_tag("stunned"), "shield bash should start knockback before stun")
 	_check(target.knockback_velocity.x > 0.0 or target.global_position.x > bash_start_x, "shield bash should apply forward knockback first")
-	await _frames(10)
+	await _frames(8)
 	_check(target.status_controller.has_tag("stunned"), "shield bash should stun for one second")
 
 	hero.reset_runtime(Vector3.ZERO)
 	target.reset_runtime(Vector3(1.0, 0.0, 0.0))
 	hero.facing = Vector3.RIGHT
-	hero.energy = hero.definition.max_energy
 	await _frames(4)
-	_check(hero.try_ability("ultimate"), "full resource should cast transformation")
+	_check(is_zero_approx(hero.definition.max_energy) and is_zero_approx(hero.definition.ability_by_id("ultimate").energy_cost), "transformation should not have an undocumented energy gate")
+	_check(hero.try_ability("ultimate"), "zero-resource gameplay should cast transformation")
 	await _frames(42)
 	_check(hero.transformed, "ultimate should enter muscular form")
 	_check(hero.definition.sprite_pose_clips.has("transformed_walk") and hero.definition.sprite_pose_clips.has("transformed_basic") and hero.definition.sprite_pose_clips.has("transformed_slam"), "muscular form should provide walk, basic, and slam keyframe clips")
 	_check(is_equal_approx(hero.ability_by_id("basic").hitbox_radius, 2.80), "muscular basic should be 280 yards")
 	_check(hero.ability_by_id("skill_q").disabled, "muscular form should disable Q")
 	var transformed_w := hero.ability_by_id("skill_w")
-	_check(is_equal_approx(transformed_w.dash_distance, 0.80), "muscular W should dash 80 yards")
+	_check(is_equal_approx(transformed_w.dash_distance, 1.0), "muscular W should dash 100 yards")
+	_check(not transformed_w.requires_aim_confirmation and transformed_w.face_move_direction_on_cast, "muscular W should instantly use the serialized movement direction")
 	_check(transformed_w.knockback > 0.0, "muscular W should be the transformed knockback attack")
 	var transformed_e := hero.ability_by_id("skill_e")
 	_check(transformed_e.vfx_id == "swole_slam" and is_equal_approx(transformed_e.hitbox_radius, 2.65), "muscular E should be the circular ground slam")
 	await _frames(16)
-	target.global_position = Vector3(5.0, 0.0, 0.0)
+	target.global_position = Vector3(5.0, 0.0, 5.0)
 	hero.facing = Vector3.RIGHT
-	var dash_start_x := hero.global_position.x
-	_check(hero.try_ability("skill_w", true), "muscular W dash should start")
+	hero.set_move_intent(Vector2(0.0, 1.0))
+	var dash_start_z := hero.global_position.z
+	var dash_pathfinder := ArenaPathfinder.new()
+	dash_pathfinder.configure([])
+	var dash_motor := CommandMotor.new()
+	root.add_child(dash_motor)
+	dash_motor.setup(hero, dash_pathfinder)
+	var dash_command := BattleCommand.create(hero.battle_id, BattleCommand.Type.CAST_ABILITY, hero.global_position)
+	dash_command.ability_id = "skill_w"
+	dash_command.direction = Vector3.BACK
+	_check(dash_motor.apply_command(dash_command), "muscular W dash should start from a command")
+	_check(hero.facing.z > 0.99, "muscular W should turn toward the movement direction before dashing")
 	await _frames(6)
-	var mid_dash_distance := hero.global_position.x - dash_start_x
-	_check(mid_dash_distance > 0.05 and mid_dash_distance < 0.75, "muscular W should visibly travel instead of teleporting")
+	var mid_dash_distance := hero.global_position.z - dash_start_z
+	_check(mid_dash_distance > 0.05 and mid_dash_distance < 0.95, "muscular W should visibly travel instead of teleporting")
 	await _frames(16)
-	var final_dash_distance := hero.global_position.x - dash_start_x
-	_check(absf(final_dash_distance - 0.80) < 0.08, "muscular W should travel 80 yards (got %.3f)" % final_dash_distance)
+	var final_dash_distance := hero.global_position.z - dash_start_z
+	_check(absf(final_dash_distance - 1.0) < 0.08, "muscular W should travel 100 yards (got %.3f)" % final_dash_distance)
+	dash_motor.queue_free()
 	hero.hp = 100.0
 	var transformed_basic := hero.ability_by_id("basic")
 	hero.on_ability_hit(transformed_basic, 10.0)

@@ -4,6 +4,9 @@ const ActorScript = preload("res://src/combat/combat_actor.gd")
 const BotScript = preload("res://src/ai/utility_bot.gd")
 const HUDScript = preload("res://src/ui/battle_hud.gd")
 const ArenaScript = preload("res://src/presentation/arena_world.gd")
+const CommandRuntimeScript = preload("res://src/commands/battle_command_runtime.gd")
+const MoveIndicatorScript = preload("res://src/presentation/move_destination_indicator.gd")
+const TargetingPreviewScript = preload("res://src/presentation/ability_targeting_preview.gd")
 
 var arena: ArenaWorld
 var player: CombatActor
@@ -11,11 +14,13 @@ var bot: CombatActor
 var bot_controller: UtilityBot
 var player_controller: MobaPlayerController
 var command_stream: BattleCommandStream
-var command_motors: Dictionary = {}
+var command_runtime: BattleCommandRuntime
 var battle_rng := BattleRng.new(20260822)
 var hud: BattleHUD
 var pathfinder: ArenaPathfinder
 var selection_layer: CanvasLayer
+var move_indicator: MoveDestinationIndicator
+var targeting_preview: AbilityTargetingPreview
 var battle_over := true
 
 
@@ -29,6 +34,11 @@ func _ready() -> void:
 	add_child(command_stream)
 	pathfinder = ArenaPathfinder.new()
 	pathfinder.configure(arena.navigation_obstacles)
+	command_runtime = CommandRuntimeScript.new() as BattleCommandRuntime
+	command_runtime.name = "BattleCommandRuntime"
+	add_child(command_runtime)
+	command_runtime.setup(command_stream, pathfinder)
+	command_runtime.running = false
 	_build_hero_selection()
 
 
@@ -100,11 +110,21 @@ func start_battle(hero_id: String = "cheems_samurai") -> void:
 	add_child(bot)
 	bot.setup(PlaceholderHero.create(), 2, "BOT", CombatActor.Relation.ENEMY)
 	bot.battle_id = 2
-	_add_motor(player, pathfinder)
-	_add_motor(bot, pathfinder)
+	_add_motor(player)
+	_add_motor(bot)
 	player_controller = MobaPlayerController.new()
 	add_child(player_controller)
 	player_controller.setup(player, arena, command_stream)
+	move_indicator = MoveIndicatorScript.new() as MoveDestinationIndicator
+	move_indicator.name = "MoveDestinationIndicator"
+	add_child(move_indicator)
+	move_indicator.setup(player)
+	targeting_preview = TargetingPreviewScript.new() as AbilityTargetingPreview
+	targeting_preview.name = "AbilityTargetingPreview"
+	add_child(targeting_preview)
+	targeting_preview.setup(player, player_controller)
+	command_runtime.movement_destination_resolved.connect(_on_movement_destination_resolved)
+	command_runtime.command_processed.connect(_on_player_command_processed)
 	bot_controller = BotScript.new() as UtilityBot
 	add_child(bot_controller)
 	bot_controller.setup(bot, player, command_stream, battle_rng)
@@ -117,22 +137,20 @@ func start_battle(hero_id: String = "cheems_samurai") -> void:
 	_reset_battle()
 
 
-func _add_motor(actor: CombatActor, pathfinder: ArenaPathfinder) -> void:
-	var motor := CommandMotor.new()
-	add_child(motor)
-	motor.setup(actor, pathfinder)
-	command_motors[actor.battle_id] = motor
+func _add_motor(actor: CombatActor) -> void:
+	command_runtime.register_actor(actor)
 
 
-func _physics_process(_delta: float) -> void:
-	if battle_over or command_stream == null or player == null:
+func _on_movement_destination_resolved(actor_id: int, requested: Vector3, resolved: Vector3, reachable: bool) -> void:
+	if player != null and actor_id == player.battle_id and move_indicator != null:
+		move_indicator.show_destination(requested, resolved, reachable)
+
+
+func _on_player_command_processed(command: BattleCommand, accepted: bool) -> void:
+	if not accepted or player == null or command.actor_id != player.battle_id or move_indicator == null:
 		return
-	for command in command_stream.advance_tick():
-		var motor = command_motors.get(command.actor_id)
-		if motor is CommandMotor:
-			motor.apply_command(command)
-	for motor in command_motors.values():
-		(motor as CommandMotor).advance_movement()
+	if command.type != BattleCommand.Type.MOVE_TO:
+		move_indicator.clear_destination(true)
 
 
 func _input(event: InputEvent) -> void:
@@ -150,8 +168,8 @@ func _input(event: InputEvent) -> void:
 
 func _end_battle(text: String) -> void:
 	battle_over = true
-	for motor in command_motors.values():
-		(motor as CommandMotor).stop()
+	command_runtime.running = false
+	command_runtime.stop_all()
 	hud.show_result(text)
 
 
@@ -163,13 +181,17 @@ func _reset_battle() -> void:
 			child.queue_free()
 	command_stream.reset()
 	battle_rng.reset(20260822)
-	for motor in command_motors.values():
-		(motor as CommandMotor).stop()
+	command_runtime.stop_all()
+	if move_indicator != null:
+		move_indicator.clear_destination()
+	if targeting_preview != null:
+		targeting_preview.clear()
 	player.reset_runtime(Vector3(-4.6, 0.05, 1.4))
 	bot.reset_runtime(Vector3(4.6, 0.05, 1.4))
 	player.facing = Vector3.RIGHT
 	bot.facing = Vector3.LEFT
 	battle_over = false
+	command_runtime.running = true
 	if hud != null:
 		hud.clear_result()
 

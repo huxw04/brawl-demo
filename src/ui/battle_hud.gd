@@ -31,15 +31,18 @@ func _build_ui() -> void:
 	add_child(root)
 	player_hp = _bar(root, Rect2(42.0, 24.0, 360.0, 22.0), player.definition.max_hp, player.relation_color(), Color("d8e5ec"), 2)
 	player_status = _bar(root, Rect2(42.0, 50.0, 360.0, 10.0), player.definition.max_energy, player.definition.status_bar_color, Color("414d5a"), 1)
+	player_status.visible = player.definition.max_energy > 0.0 and not player.definition.status_bar_id.is_empty()
 	player_stamina = _bar(root, Rect2(42.0, 66.0, 270.0, 15.0), player.definition.max_stamina, Color("84dcf2"), Color("c9f3ff"), 2)
 	bot_hp = _bar(root, Rect2(878.0, 24.0, 360.0, 22.0), bot.definition.max_hp, bot.relation_color(), Color("d8e5ec"), 2)
 	bot_status = _bar(root, Rect2(878.0, 50.0, 360.0, 10.0), bot.definition.max_energy, bot.definition.status_bar_color, Color("414d5a"), 1)
+	bot_status.visible = bot.definition.max_energy > 0.0 and not bot.definition.status_bar_id.is_empty()
 	var player_name := _label(root, Rect2(42.0, 2.0, 360.0, 22.0), "PLAYER · %s" % player.actor_name, 16)
 	player_name.add_theme_color_override("font_color", player.relation_color())
 	var bot_name := _label(root, Rect2(878.0, 2.0, 360.0, 22.0), "%s · BOT" % bot.actor_name, 16)
 	bot_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	bot_name.add_theme_color_override("font_color", bot.relation_color())
-	var resource_names := _label(root, Rect2(318.0, 47.0, 180.0, 38.0), "%s\nSTAMINA" % player.definition.status_bar_label, 11)
+	var resource_text := "%s\nSTAMINA" % player.definition.status_bar_label if player_status.visible else "STAMINA"
+	var resource_names := _label(root, Rect2(318.0, 47.0, 180.0, 38.0), resource_text, 11)
 	resource_names.add_theme_color_override("font_color", Color("8da3b3"))
 	var skill_row := HBoxContainer.new()
 	skill_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -118,7 +121,10 @@ func _process(_delta: float) -> void:
 	bot_hp.value = bot.hp
 	bot_status.value = bot.energy
 	command_label.text = "RMB 寻路 · LMB 攻击/确认 · QWER 技能 · SHIFT 翻滚 · SPACE 跳跃"
-	state_label.text = "体力 %.0f  ·  能量 %.0f  ·  %s" % [player.stamina, player.energy, player.status_text()]
+	if player.definition.max_energy > 0.0 and not player.definition.status_bar_id.is_empty():
+		state_label.text = "体力 %.0f  ·  %s %.0f  ·  %s" % [player.stamina, player.definition.status_bar_label, player.energy, player.status_text()]
+	else:
+		state_label.text = "体力 %.0f  ·  %s" % [player.stamina, player.status_text()]
 	status_effect_label.text = "  ·  ".join(player.status_controller.summaries())
 
 

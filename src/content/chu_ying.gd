@@ -11,8 +11,10 @@ static func create() -> HeroDefinition:
 	hero.move_speed = 3.15
 	hero.max_energy = 3.0
 	hero.starts_with_full_energy = true
-	hero.status_bar_id = "go_stones"
-	hero.status_bar_label = "棋子"
+	# Q charges still reuse the deterministic energy value internally, but they
+	# are communicated by the skill icon instead of a second white bar under HP.
+	hero.status_bar_id = ""
+	hero.status_bar_label = ""
 	hero.status_bar_color = Color("dce4ef")
 	hero.body_radius = 0.34
 	hero.body_height = 1.62
@@ -42,6 +44,9 @@ static func create() -> HeroDefinition:
 	q.active_duration_override = 0.10
 	q.vfx_id = "chu_ying_falling_stone"
 	q.color = Color("f1f3f6")
+	q.targeting_preview = "point"
+	q.targeting_preview_range = q.target_required_range
+	q.targeting_preview_radius = q.hitbox_radius
 
 	var w := _ability("skill_w", "小棋盘", 0.18, 0.05, 0.22, 8.0)
 	w.damage = 10.0
@@ -53,6 +58,10 @@ static func create() -> HeroDefinition:
 	w.knockup_control_duration = 0.45
 	w.vfx_id = "chu_ying_board"
 	w.color = Color("d9b36b")
+	w.targeting_preview = "point"
+	w.targeting_preview_range = w.target_required_range
+	w.targeting_preview_radius = w.hitbox_radius
+	w.targeting_preview_secondary_radius = 5.0
 
 	var e := _ability("skill_e", "棋魂传送", 1.0, 0.02, 0.10, 10.0)
 	e.damage = 0.0
@@ -62,6 +71,9 @@ static func create() -> HeroDefinition:
 	e.self_control_immune_duration = 1.0
 	e.vfx_id = "chu_ying_teleport"
 	e.color = Color("d8ecff")
+	e.targeting_preview = "point"
+	e.targeting_preview_range = e.target_required_range
+	e.targeting_preview_radius = hero.body_radius
 
 	var r := _ability("ultimate", "棋界禁锢", 0.5, 0.05, 0.20, 30.0)
 	r.damage = 0.0
@@ -72,6 +84,8 @@ static func create() -> HeroDefinition:
 	r.knockup_control_duration = 0.5
 	r.vfx_id = "chu_ying_barrier"
 	r.color = Color("e8f2ff")
+	r.targeting_preview = "barrier"
+	r.targeting_preview_range = r.target_required_range
 
 	hero.abilities = [basic, q, w, e, r]
 	return hero

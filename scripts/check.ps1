@@ -42,6 +42,10 @@ Write-Host "Integration test: commands, RNG, and pathfinding"
 & $godotPath --headless --path $projectRoot --script "res://tests/command_system_test.gd"
 if ($LASTEXITCODE -ne 0) { throw "Command system test failed" }
 
+Write-Host "Integration test: shared Lab and battle command runtime"
+& $godotPath --headless --path $projectRoot --script "res://tests/scene_command_runtime_test.gd"
+if ($LASTEXITCODE -ne 0) { throw "Scene command runtime test failed" }
+
 Write-Host "Integration test: Cheems samurai"
 & $godotPath --headless --path $projectRoot --script "res://tests/cheems_samurai_test.gd"
 if ($LASTEXITCODE -ne 0) { throw "Cheems samurai test failed" }

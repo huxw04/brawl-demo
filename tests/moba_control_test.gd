@@ -8,6 +8,13 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	_check(CheemsSamurai.create().ability_by_id("skill_q").targeting_preview == "line", "Cheems Q should use a line preview")
+	_check(SwordShieldDog.create().ability_by_id("skill_w").targeting_preview == "box", "sword-and-shield W should use a box preview")
+	var transformed_dash := SwordShieldDog.create().transformed_ability_by_id("skill_w")
+	_check(not transformed_dash.requires_aim_confirmation and transformed_dash.face_move_direction_on_cast, "transformed dash should instantly use movement direction")
+	_check(BearGryllsJungler.create().ability_by_id("ultimate").targeting_preview == "unit", "Bear R should use a unit-lock preview")
+	_check(Nailoong.create().ability_by_id("skill_e").targeting_preview == "leap", "Nailoong E should preview its path and landing area")
+	_check(ChuYing.create().ability_by_id("ultimate").targeting_preview == "barrier", "Chu Ying R should use its custom rectangle preview")
 	var packed: PackedScene = load("res://scenes/battle_arena.tscn")
 	var battle: Node3D = packed.instantiate()
 	root.add_child(battle)
@@ -22,7 +29,12 @@ func _run() -> void:
 	click.pressed = true
 	click.position = battle.arena.camera.unproject_position(destination)
 	battle.player_controller._unhandled_input(click)
-	await _physics_frames(70)
+	await _physics_frames(2)
+	_check(battle.move_indicator.marker != null, "right click should create a persistent resolved destination marker")
+	if battle.move_indicator.marker != null:
+		var marker_position: Vector3 = battle.move_indicator.marker.global_position
+		_check(Vector2(marker_position.x, marker_position.z).distance_to(Vector2(destination.x, destination.z)) < 0.05, "destination marker should use the pathfinder's resolved endpoint")
+	await _physics_frames(68)
 	_check(player.global_position.distance_to(destination) < start.distance_to(destination), "right click should move the player along an A* path")
 	_check(battle.command_stream.history[0].type == BattleCommand.Type.MOVE_TO, "right click should record a MOVE_TO command")
 
@@ -39,6 +51,10 @@ func _run() -> void:
 	q_key.pressed = true
 	battle.player_controller._unhandled_input(q_key)
 	_check(battle.player_controller.pending_ability == "skill_q", "Q should arm the Q ability")
+	await _physics_frames(2)
+	_check(battle.targeting_preview.shown_ability_id == "skill_q" and battle.targeting_preview.preview_mesh.get_surface_count() > 0, "armed directional ability should display world-space targeting geometry")
+	_check(battle.targeting_preview.fill_material.albedo_color.a <= 0.05 and battle.targeting_preview.edge_material.albedo_color.a <= 0.25, "thicker targeting geometry should remain visually subtle through low overall opacity")
+	_check(battle.targeting_preview.edge_material.cull_mode == BaseMaterial3D.CULL_DISABLED, "two-sided ground strips should not disappear because of triangle winding")
 	var cast_click := InputEventMouseButton.new()
 	cast_click.button_index = MOUSE_BUTTON_LEFT
 	cast_click.pressed = true
