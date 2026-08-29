@@ -107,6 +107,27 @@ func _run() -> void:
 	_check(hero.nailoong_roll_direction.dot(remaining_direction.normalized()) > 0.55, "far-click roll direction should keep converging on the true destination")
 	roll_motor.queue_free()
 
+	await _reset(Vector3.ZERO, Vector3(3.0, 0.0, 0.0))
+	hero.facing = Vector3.RIGHT
+	_check(hero.try_ability("skill_q"), "closest-approach steering roll should start")
+	await _frames(6)
+	var orbit_motor := CommandMotor.new()
+	root.add_child(orbit_motor)
+	orbit_motor.setup(hero, roll_pathfinder)
+	_check(orbit_motor.set_destination(Vector3(2.0, 0.0, 2.0)), "rolling should accept a reachable steering destination")
+	for _index in range(180):
+		orbit_motor.advance_movement()
+		await physics_frame
+		if not orbit_motor.direct_steering_destination:
+			break
+	_check(not orbit_motor.direct_steering_destination and hero.move_intent.length_squared() < 0.001, "roll steering should release after passing its closest approach instead of orbiting in place")
+	var released_direction := hero.nailoong_roll_direction
+	for _index in range(12):
+		orbit_motor.advance_movement()
+		await physics_frame
+	_check(hero.nailoong_roll_direction.angle_to(released_direction) < 0.02, "released roll steering should preserve forward momentum without turning back")
+	orbit_motor.queue_free()
+
 	await _reset(Vector3.ZERO, Vector3(2.0, 0.0, 0.0))
 	hero.facing = Vector3.RIGHT
 	_check(hero.try_ability("skill_q"), "death test roll should start")

@@ -124,11 +124,12 @@ func _ready() -> void:
 	add_child(hud)
 	hud.setup(local_actor, opponent)
 	hud.set_respawn_mode(true)
+	hud.set_top_status_visible(false)
 	hud.return_to_menu_requested.connect(_leave_match)
 	scoreboard = ScoreboardScript.new() as BrawlScoreboard
 	scoreboard.name = "BrawlScoreboard"
 	add_child(scoreboard)
-	scoreboard.setup(local_actor.battle_id)
+	scoreboard.setup(local_actor.battle_id, NetworkSession.match_config.get("participants", []) as Array)
 	player_controller.targeting_changed.connect(hud.set_targeting)
 	command_runtime.movement_destination_resolved.connect(_on_movement_destination_resolved)
 	command_runtime.command_processed.connect(_on_command_processed)
@@ -210,28 +211,30 @@ func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	layer.layer = 20
 	add_child(layer)
-	var panel := PanelContainer.new()
-	panel.position = Vector2(490.0, 18.0)
-	panel.size = Vector2(300.0, 132.0)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.04, 0.065, 0.09, 0.9)
-	style.border_color = Color("4a647b")
-	style.set_border_width_all(2)
-	style.set_corner_radius_all(10)
-	panel.add_theme_stylebox_override("panel", style)
-	layer.add_child(panel)
+	diagnostics_panel = PanelContainer.new()
+	diagnostics_panel.position = Vector2(18.0, 430.0)
+	diagnostics_panel.size = Vector2(430.0, 210.0)
+	diagnostics_panel.visible = false
+	var diagnostics_style := StyleBoxFlat.new()
+	diagnostics_style.bg_color = Color(0.025, 0.045, 0.065, 0.82)
+	diagnostics_style.border_color = Color(0.36, 0.65, 0.78, 0.55)
+	diagnostics_style.set_border_width_all(1)
+	diagnostics_style.set_corner_radius_all(8)
+	diagnostics_panel.add_theme_stylebox_override("panel", diagnostics_style)
+	layer.add_child(diagnostics_panel)
 	var margin := MarginContainer.new()
-	margin.add_theme_constant_override("margin_left", 18)
-	margin.add_theme_constant_override("margin_right", 18)
-	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_bottom", 14)
-	panel.add_child(margin)
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 12)
+	margin.add_theme_constant_override("margin_bottom", 12)
+	diagnostics_panel.add_child(margin)
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 7)
+	column.add_theme_constant_override("separation", 5)
 	margin.add_child(column)
 	var title := Label.new()
-	title.text = "局域网战斗 · 阶段 C"
-	title.add_theme_font_size_override("font_size", 22)
+	title.text = "局域网战斗 · 联机诊断"
+	title.add_theme_font_size_override("font_size", 17)
+	title.add_theme_color_override("font_color", Color("e1edf3"))
 	column.add_child(title)
 	status_label = Label.new()
 	status_label.text = "已加载 %s，等待其他玩家…" % arena.map_definition.display_name
@@ -241,26 +244,18 @@ func _build_ui() -> void:
 	roster_label.add_theme_color_override("font_color", Color("c8d5df"))
 	column.add_child(roster_label)
 	network_label = Label.new()
-	network_label.text = "等待权威命令 · F3 联机诊断"
+	network_label.text = "等待权威命令"
 	network_label.add_theme_color_override("font_color", Color("92a8b8"))
 	column.add_child(network_label)
-	diagnostics_panel = PanelContainer.new()
-	diagnostics_panel.position = Vector2(18.0, 520.0)
-	diagnostics_panel.size = Vector2(390.0, 105.0)
-	diagnostics_panel.visible = false
-	var diagnostics_style := StyleBoxFlat.new()
-	diagnostics_style.bg_color = Color(0.025, 0.045, 0.065, 0.82)
-	diagnostics_style.border_color = Color(0.36, 0.65, 0.78, 0.55)
-	diagnostics_style.set_border_width_all(1)
-	diagnostics_style.set_corner_radius_all(8)
-	diagnostics_panel.add_theme_stylebox_override("panel", diagnostics_style)
-	layer.add_child(diagnostics_panel)
+	var separator := HSeparator.new()
+	separator.modulate = Color(0.5, 0.7, 0.8, 0.42)
+	column.add_child(separator)
 	diagnostics_label = Label.new()
 	diagnostics_label.text = "联机诊断准备中…"
 	diagnostics_label.add_theme_color_override("font_color", Color("b9d8e8"))
 	diagnostics_label.add_theme_constant_override("outline_size", 2)
 	diagnostics_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.7))
-	diagnostics_panel.add_child(diagnostics_label)
+	column.add_child(diagnostics_label)
 	_refresh_roster(NetworkSession.roster())
 
 
@@ -275,7 +270,7 @@ func _on_match_began() -> void:
 	player_controller.set_process_unhandled_input(true)
 	if score_manager != null:
 		score_manager.start_match()
-		scoreboard.apply_match_state(score_manager.network_state_packet())
+		scoreboard.apply_match_state(_build_match_state_packet())
 	status_label.text = "房主权威战斗已开始" if NetworkSession.is_host() else "只读战斗副本已开始"
 	status_label.add_theme_color_override("font_color", Color("8ff0a4"))
 
@@ -373,13 +368,31 @@ func _build_state_snapshots() -> Array[Dictionary]:
 			"actor": actor.network_state_packet(),
 		})
 	if score_manager != null:
+		var match_state := _build_match_state_packet()
+		if scoreboard != null:
+			scoreboard.apply_match_state(match_state)
 		snapshots.append({
 			"match_id": int(NetworkSession.match_config.get("match_id", 0)),
 			"server_tick": command_stream.current_tick,
 			"server_sequence": NetworkSession.latest_server_command_sequence(),
-			"match_state": score_manager.network_state_packet(),
+			"match_state": match_state,
 		})
 	return snapshots
+
+
+func _build_match_state_packet() -> Dictionary:
+	if score_manager == null:
+		return {}
+	var packet := score_manager.network_state_packet()
+	var quality: Array[Dictionary] = []
+	for value in NetworkSession.match_config.get("participants", []):
+		var participant := value as Dictionary
+		quality.append({
+			"actor_id": int(participant.get("actor_id", 0)),
+			"latency_ms": NetworkSession.peer_round_trip_time_ms(int(participant.get("peer_id", 0))),
+		})
+	packet["network_quality"] = quality
+	return packet
 
 
 func _on_state_snapshot(snapshot: Dictionary) -> void:
@@ -417,9 +430,14 @@ func _on_entity_snapshot(snapshot: Dictionary) -> void:
 func _on_authoritative_event_emitted(event: AuthoritativeEvent) -> void:
 	if not NetworkSession.is_host() or not _is_supported_network_event(event):
 		return
+	var event_packet := event.to_packet()
+	if event.event_type == AuthoritativeEvent.MATCH_RULE and str(event.payload.get("event_kind", "")) in ["kill_announcement", "match_ended"]:
+		var payload := event_packet.get("payload", {}) as Dictionary
+		payload["state"] = _build_match_state_packet()
+		event_packet["payload"] = payload
 	NetworkSession.broadcast_authoritative_event({
 		"match_id": int(NetworkSession.match_config.get("match_id", 0)),
-		"event": event.to_packet(),
+		"event": event_packet,
 	})
 
 

@@ -13,16 +13,23 @@ func _run() -> void:
 	root.add_child(arena)
 	var source := CombatActor.new()
 	root.add_child(source)
-	source.setup(PlaceholderHero.create(), 1, "source")
+	source.setup(PlaceholderHero.create(), 1, "source", CombatActor.Relation.SELF)
 	_check(source.hero_runtime.get_script() == load("res://src/combat/hero_runtime/hero_runtime.gd"), "heroes without dedicated mechanics should use the transparent base HeroRuntime")
 	source.global_position = Vector3(-2.0, 0.05, 0.0)
 	source.facing = Vector3.RIGHT
 	var target := CombatActor.new()
 	root.add_child(target)
-	target.setup(PlaceholderHero.create(), 2, "target")
+	target.setup(PlaceholderHero.create(), 2, "target", CombatActor.Relation.ENEMY)
 	target.global_position = Vector3(-0.82, 0.05, 0.0)
 	target.facing = Vector3.LEFT
 	await _physics_frames(8)
+	_check(target.actor_presentation.sprite.modulate.is_equal_approx(Color.WHITE), "enemy relation colors must not tint the hero artwork")
+	_check(source.actor_presentation.stamina_ring != null and source.actor_presentation.stamina_ring.visible, "the locally controlled actor should have a world-space stamina ring")
+	_check(target.actor_presentation.stamina_ring != null and not target.actor_presentation.stamina_ring.visible, "non-local actors should not show stamina rings")
+	var stamina_ring := source.actor_presentation.stamina_ring as WorldStaminaRing
+	var backing_material := stamina_ring.background.mesh.surface_get_material(0) as StandardMaterial3D
+	var fill_material := stamina_ring.fill.mesh.surface_get_material(0) as StandardMaterial3D
+	_check(fill_material.render_priority > backing_material.render_priority, "stamina fill should render above its dark backing")
 
 	var initial_hp := target.hp
 	_check(source.try_ability("basic"), "basic attack should start")
@@ -85,6 +92,8 @@ func _run() -> void:
 	source.set_move_intent(Vector2.RIGHT)
 	_check(source.try_roll(), "roll should start with full stamina")
 	_check(is_equal_approx(source.stamina, stamina_before - source.definition.max_stamina / 3.0), "roll should cost exactly one third stamina")
+	await _physics_frames(1)
+	_check(source.actor_presentation.stamina_ring.last_fill_steps < WorldStaminaRing.SEGMENTS, "world stamina ring should reflect stamina spending")
 	source.reset_runtime(Vector3(-3.0, 0.05, 2.4))
 	await _physics_frames(5)
 	source.stamina = 50.0

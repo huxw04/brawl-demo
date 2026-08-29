@@ -6,6 +6,7 @@ extends Node
 
 const PLACEHOLDER_TEXTURE = preload("res://assets/placeholder_hero.svg")
 const ACTION_SWORD_BODY_INSET := 0.30
+const WorldStaminaRingScript = preload("res://src/presentation/world_stamina_ring.gd")
 const HERO_VFX_SCRIPTS := {
 	"nailoong": preload("res://src/presentation/hero_vfx/nailoong_vfx.gd"),
 	"chu_ying": preload("res://src/presentation/hero_vfx/chu_ying_vfx.gd"),
@@ -24,6 +25,7 @@ var status_visual: MeshInstance3D
 var visual_layer_sprites: Dictionary = {}
 var ground_marker: Node3D
 var hero_vfx: Node
+var stamina_ring: WorldStaminaRing
 
 var visual_motion_time := 0.0
 var movement_animation_time := 0.0
@@ -42,6 +44,10 @@ var nailoong_spin_phase := 0.0
 func setup(p_actor: CombatActor) -> void:
 	actor = p_actor
 	_create_visual_nodes()
+	stamina_ring = WorldStaminaRingScript.new() as WorldStaminaRing
+	stamina_ring.name = "WorldStaminaRing"
+	actor.add_child(stamina_ring)
+	stamina_ring.setup(actor)
 	_create_hero_vfx()
 
 
@@ -347,7 +353,7 @@ func _create_visual_nodes() -> void:
 	sprite.billboard = BaseMaterial3D.BILLBOARD_DISABLED
 	sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_DISABLED
 	sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-	sprite.modulate = Color.WHITE if actor.team == 1 else Color("ffb1aa")
+	sprite.modulate = Color.WHITE
 	actor.add_child(sprite)
 
 	var animation_player := AnimationPlayer.new()
@@ -467,7 +473,7 @@ func _target_scale() -> Vector3:
 
 
 func _update_visibility_and_status(delta: float) -> void:
-	var base_color := Color.WHITE if actor.team == 1 else Color("ffb1aa")
+	var base_color := Color.WHITE
 	if actor.status_controller.has_visual("slow"):
 		base_color = base_color.lerp(Color("74cfff"), 0.28)
 	elif actor.status_controller.has_visual("poison"):

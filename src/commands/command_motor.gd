@@ -1,6 +1,9 @@
 class_name CommandMotor
 extends Node
 
+const WAYPOINT_REACHED_DISTANCE := 0.16
+const PASS_CORRIDOR_PADDING := 0.14
+
 var actor: CombatActor
 var pathfinder: ArenaPathfinder
 var path := PackedVector3Array()
@@ -8,6 +11,8 @@ var path_index := 0
 var destination := Vector3.ZERO
 var resolved_destination := Vector3.ZERO
 var direct_steering_destination := false
+var direct_best_distance := INF
+var movement_sample_position := Vector3.ZERO
 var pending_basic := false
 var pending_basic_target := Vector3.ZERO
 var continuous_session: ContinuousAbilitySession
@@ -16,6 +21,7 @@ var continuous_session: ContinuousAbilitySession
 func setup(p_actor: CombatActor, p_pathfinder: ArenaPathfinder) -> void:
 	actor = p_actor
 	pathfinder = p_pathfinder
+	movement_sample_position = actor.global_position
 	continuous_session = ContinuousAbilitySession.new()
 	continuous_session.setup(actor)
 
@@ -77,20 +83,30 @@ func set_destination(target: Vector3, clear_pending := true) -> bool:
 		pending_basic = false
 	destination = target
 	if _is_nailoong_rolling():
+		# Keep the steering target direct (a short A-star waypoint makes a
+		# turning-limited roll orbit), but still use pathfinding to clamp clicks
+		# outside the playable map to a valid endpoint.
+		var endpoint_path := pathfinder.find_path(actor.global_position, target)
+		if not endpoint_path.is_empty():
+			destination = endpoint_path[endpoint_path.size() - 1]
 		direct_steering_destination = true
 		path = PackedVector3Array()
 		path_index = 0
-		var direct_offset := target - actor.global_position
+		movement_sample_position = actor.global_position
+		var direct_offset := destination - actor.global_position
 		direct_offset.y = 0.0
 		actor.set_move_intent(Vector2(direct_offset.x, direct_offset.z).normalized() if direct_offset.length_squared() > 0.001 else Vector2.ZERO)
-		resolved_destination = target
+		direct_best_distance = direct_offset.length()
+		resolved_destination = destination
 		return direct_offset.length_squared() > 0.001
 	direct_steering_destination = false
+	direct_best_distance = INF
 	path = pathfinder.find_path(actor.global_position, target)
 	path_index = 1 if path.size() > 1 else 0
 	resolved_destination = path[path.size() - 1] if not path.is_empty() else actor.global_position
 	if path.is_empty():
 		actor.set_move_intent(Vector2.ZERO)
+	movement_sample_position = actor.global_position
 	return not path.is_empty()
 
 
@@ -98,15 +114,25 @@ func advance_movement() -> void:
 	continuous_session.refresh()
 	if actor == null or actor.is_defeated:
 		return
+	var previous_position := movement_sample_position
+	var current_position := actor.global_position
+	movement_sample_position = current_position
 	if pending_basic and _advance_pending_basic():
 		return
 	if direct_steering_destination:
 		if _is_nailoong_rolling():
 			var direct_offset := destination - actor.global_position
 			direct_offset.y = 0.0
-			if direct_offset.length() > 0.16:
+			var distance := direct_offset.length()
+			var turning_radius := actor.definition.move_speed * 1.65 / TAU
+			var closest_useful_distance := turning_radius + actor.definition.body_radius
+			var passed_closest_approach := direct_best_distance <= closest_useful_distance and distance > direct_best_distance + 0.035
+			direct_best_distance = minf(direct_best_distance, distance)
+			if not _reached_or_crossed(destination, previous_position, current_position) and not passed_closest_approach:
 				actor.set_move_intent(Vector2(direct_offset.x, direct_offset.z).normalized())
 				return
+			# Q keeps rolling under its own momentum, but no longer turns back at
+			# the click and falls into a tight orbit around it.
 			stop()
 			return
 		direct_steering_destination = false
@@ -114,7 +140,7 @@ func advance_movement() -> void:
 	while path_index < path.size():
 		var offset := path[path_index] - actor.global_position
 		offset.y = 0.0
-		if offset.length() > 0.16:
+		if not _reached_or_crossed(path[path_index], previous_position, current_position):
 			actor.set_move_intent(Vector2(offset.x, offset.z).normalized())
 			return
 		path_index += 1
@@ -127,8 +153,10 @@ func stop(clear_pending := true) -> void:
 	path = PackedVector3Array()
 	path_index = 0
 	direct_steering_destination = false
+	direct_best_distance = INF
 	if actor != null:
 		actor.set_move_intent(Vector2.ZERO)
+		movement_sample_position = actor.global_position
 
 
 func force_cleanup_continuous_ability() -> bool:
@@ -167,3 +195,19 @@ func _face_target(target: Vector3) -> void:
 
 func _is_nailoong_rolling() -> bool:
 	return actor != null and actor.current_ability != null and actor.current_ability.vfx_id == "nailoong_roll" and actor.ability_phase == "active"
+
+
+func _reached_or_crossed(point: Vector3, previous_position: Vector3, current_position: Vector3) -> bool:
+	var flat_point := Vector3(point.x, 0.0, point.z)
+	var flat_current := Vector3(current_position.x, 0.0, current_position.z)
+	if flat_current.distance_to(flat_point) <= WAYPOINT_REACHED_DISTANCE:
+		return true
+	var flat_previous := Vector3(previous_position.x, 0.0, previous_position.z)
+	var travelled := flat_current - flat_previous
+	var travelled_squared := travelled.length_squared()
+	if travelled_squared <= 0.000001:
+		return false
+	var progress := clampf((flat_point - flat_previous).dot(travelled) / travelled_squared, 0.0, 1.0)
+	var closest_on_step := flat_previous + travelled * progress
+	var corridor := maxf(WAYPOINT_REACHED_DISTANCE, actor.definition.body_radius + PASS_CORRIDOR_PADDING)
+	return progress > 0.0 and progress < 1.0 and closest_on_step.distance_to(flat_point) <= corridor

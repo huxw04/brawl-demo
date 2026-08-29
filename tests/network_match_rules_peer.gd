@@ -50,6 +50,11 @@ func _run_host() -> void:
 	_check(await _wait_until(func() -> bool: return current_scene.score_manager.ended, 120), "kill limit should end the authority match")
 	_check(not current_scene.command_gateway.accepting_commands and not current_scene.match_running, "host should stop gameplay commands after the result")
 	_check(current_scene.scoreboard.result_panel.visible, "host should show the complete result panel")
+	_check(not current_scene.hud.top_status_root.visible and not current_scene.hud.state_label.visible, "network HUD should hide the legacy top resource bars")
+	_check(not current_scene.diagnostics_panel.visible and current_scene.diagnostics_panel.is_ancestor_of(current_scene.status_label), "network status text should live inside the collapsed F3 diagnostics panel")
+	_check(current_scene.scoreboard.announcement_phrase.text == "一破·卧龙出山", "host kill card should include the requested first-kill meme title")
+	_check(current_scene.scoreboard.announcement_killer_portrait.texture != null and current_scene.scoreboard.announcement_victim_portrait.texture != null, "host kill card should resolve both hero portraits")
+	_check(current_scene.scoreboard.latency_by_actor.size() == 2, "host scoreboard should sample latency for every participant")
 	_check(await _wait_until(func() -> bool: return session.players.size() <= 1, 600), "client should acknowledge the synchronized result by leaving")
 
 
@@ -63,6 +68,18 @@ func _run_client() -> void:
 	_check(int(current_scene.authority_presentation.match_rule_counts_by_kind.get("kill_announcement", 0)) == 1, "client should consume one reliable kill announcement")
 	_check(int(current_scene.authority_presentation.match_rule_counts_by_kind.get("match_ended", 0)) == 1, "client should consume one reliable match-end event")
 	_check(current_scene.scoreboard.result_panel.visible, "client should show the result panel")
+	_check(current_scene.scoreboard.announcement_phrase.text == "一破·卧龙出山", "client should render the synchronized streak title")
+	_check(current_scene.scoreboard.latency_by_actor.size() == 2, "client should receive host-measured latency for every participant")
+	var tab_press := InputEventKey.new()
+	tab_press.keycode = KEY_TAB
+	tab_press.pressed = true
+	current_scene.scoreboard._input(tab_press)
+	_check(current_scene.scoreboard.expanded, "holding Tab should expand the scoreboard")
+	var tab_release := InputEventKey.new()
+	tab_release.keycode = KEY_TAB
+	tab_release.pressed = false
+	current_scene.scoreboard._input(tab_release)
+	_check(not current_scene.scoreboard.expanded, "releasing Tab should collapse the scoreboard")
 	_check(not current_scene.command_gateway.accepting_commands and not current_scene.match_running, "client should stop accepting local commands after the result")
 	var rows := current_scene.scoreboard.current_state.get("stats", []) as Array
 	_check(rows.size() == 2 and _total_kills(rows) == 1 and _total_deaths(rows) == 1, "client scoreboard should contain synchronized K/D/A totals")

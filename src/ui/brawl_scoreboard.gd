@@ -1,31 +1,51 @@
 class_name BrawlScoreboard
 extends CanvasLayer
 
+const QualityIconScript = preload("res://src/ui/network_quality_icon.gd")
+const KillIconScript = preload("res://src/ui/kill_feed_icon.gd")
+
 var local_actor_id := 0
 var expanded := false
 var current_state: Dictionary = {}
+var participants_by_actor: Dictionary = {}
+var latency_by_actor: Dictionary = {}
 var remaining_time := 0.0
 var timer_running := false
 var timer_label: Label
 var board_panel: PanelContainer
-var board_label: Label
-var announcement_label: Label
+var board_header: Label
+var board_rows: VBoxContainer
+var board_signature := ""
+var announcement_panel: PanelContainer
+var announcement_killer_name: Label
+var announcement_killer_portrait: TextureRect
+var announcement_phrase: Label
+var announcement_victim_name: Label
+var announcement_victim_portrait: TextureRect
 var announcement_tween: Tween
 var result_panel: PanelContainer
 var result_title: Label
 var result_table: Label
 
 
-func setup(p_local_actor_id: int) -> void:
+func setup(p_local_actor_id: int, participants: Array = []) -> void:
 	local_actor_id = p_local_actor_id
+	for value in participants:
+		var participant := value as Dictionary
+		participants_by_actor[int(participant.get("actor_id", 0))] = participant.duplicate(true)
 	layer = 24
 	_build_ui()
+	_refresh_board(true)
 
 
 func apply_match_state(state: Dictionary) -> void:
 	if state.is_empty():
 		return
+	var preserved_quality = current_state.get("network_quality", [])
 	current_state = state.duplicate(true)
+	if not current_state.has("network_quality") and preserved_quality is Array:
+		current_state["network_quality"] = (preserved_quality as Array).duplicate(true)
+	_apply_network_quality(current_state.get("network_quality", []) as Array)
 	remaining_time = maxf(0.0, float(state.get("remaining_time", remaining_time)))
 	timer_running = bool(state.get("running", false)) and not bool(state.get("ended", false))
 	_refresh_timer()
@@ -38,31 +58,40 @@ func show_kill_announcement(payload: Dictionary) -> void:
 	var state := payload.get("state", {}) as Dictionary
 	if not state.is_empty():
 		apply_match_state(state)
-	announcement_label.text = str(payload.get("announcement", ""))
-	announcement_label.modulate = Color.WHITE
-	announcement_label.add_theme_color_override(
-		"font_color",
-		Color("ffd267") if bool(payload.get("shutdown", false)) else Color("f2f5ff")
-	)
+	var killer_id := int(payload.get("killer_actor_id", 0))
+	var victim_id := int(payload.get("victim_actor_id", 0))
+	announcement_killer_name.text = _actor_name(killer_id)
+	announcement_victim_name.text = _actor_name(victim_id)
+	announcement_killer_portrait.texture = _portrait_texture(killer_id)
+	announcement_victim_portrait.texture = _portrait_texture(victim_id)
+	announcement_phrase.text = "终结" if bool(payload.get("shutdown", false)) else _streak_title(int(payload.get("killer_streak", 0)), str(payload.get("phrase", "")))
+	announcement_phrase.add_theme_color_override("font_color", Color("ffd267") if bool(payload.get("shutdown", false)) else Color("f2f5ff"))
+	announcement_panel.visible = true
+	announcement_panel.modulate = Color.WHITE
 	if announcement_tween != null and announcement_tween.is_valid():
 		announcement_tween.kill()
 	announcement_tween = create_tween()
 	announcement_tween.tween_interval(2.1)
-	announcement_tween.tween_property(announcement_label, "modulate:a", 0.0, 0.65)
+	announcement_tween.tween_property(announcement_panel, "modulate:a", 0.0, 0.65)
+	announcement_tween.tween_callback(func() -> void: announcement_panel.visible = false)
 
 
 func show_results(payload: Dictionary) -> void:
 	var state := payload.get("state", current_state) as Dictionary
 	if not state.is_empty():
+		var preserved_quality = current_state.get("network_quality", [])
 		current_state = state.duplicate(true)
+		if not current_state.has("network_quality") and preserved_quality is Array:
+			current_state["network_quality"] = (preserved_quality as Array).duplicate(true)
+		_apply_network_quality(current_state.get("network_quality", []) as Array)
 		remaining_time = float(state.get("remaining_time", remaining_time))
 	var winner_id := int(current_state.get("winner_actor_id", payload.get("winner_actor_id", 0)))
 	var winner_name := _actor_name(winner_id)
 	result_title.text = "比赛结束 · 平局" if winner_id <= 0 else "比赛结束 · %s 获胜" % winner_name
-	result_table.text = _table_text(true)
+	result_table.text = _result_table_text()
 	result_panel.visible = true
 	expanded = false
-	_refresh_board()
+	_refresh_board(true)
 
 
 func _process(delta: float) -> void:
@@ -71,17 +100,17 @@ func _process(delta: float) -> void:
 		_refresh_timer()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not event is InputEventKey or event.keycode != KEY_TAB or not event.pressed or event.echo:
+func _input(event: InputEvent) -> void:
+	if not event is InputEventKey or event.keycode != KEY_TAB or event.echo:
 		return
-	expanded = not expanded
-	_refresh_board()
+	expanded = event.pressed
+	_refresh_board(true)
 	get_viewport().set_input_as_handled()
 
 
 func _build_ui() -> void:
 	timer_label = Label.new()
-	timer_label.position = Vector2(565.0, 156.0)
+	timer_label.position = Vector2(565.0, 6.0)
 	timer_label.size = Vector2(150.0, 40.0)
 	timer_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	timer_label.add_theme_font_size_override("font_size", 25)
@@ -91,7 +120,7 @@ func _build_ui() -> void:
 
 	board_panel = PanelContainer.new()
 	board_panel.position = Vector2(18.0, 132.0)
-	board_panel.custom_minimum_size = Vector2(350.0, 0.0)
+	board_panel.custom_minimum_size = Vector2(390.0, 0.0)
 	board_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.025, 0.04, 0.06, 0.78), Color(0.33, 0.5, 0.62, 0.65)))
 	add_child(board_panel)
 	var margin := MarginContainer.new()
@@ -100,21 +129,87 @@ func _build_ui() -> void:
 	margin.add_theme_constant_override("margin_top", 8)
 	margin.add_theme_constant_override("margin_bottom", 8)
 	board_panel.add_child(margin)
-	board_label = Label.new()
-	board_label.add_theme_font_size_override("font_size", 15)
-	board_label.add_theme_color_override("font_color", Color("d9e7f0"))
-	margin.add_child(board_label)
+	var board_column := VBoxContainer.new()
+	board_column.add_theme_constant_override("separation", 5)
+	margin.add_child(board_column)
+	board_header = Label.new()
+	board_header.add_theme_font_size_override("font_size", 14)
+	board_header.add_theme_color_override("font_color", Color("91a9b8"))
+	board_column.add_child(board_header)
+	board_rows = VBoxContainer.new()
+	board_rows.add_theme_constant_override("separation", 3)
+	board_column.add_child(board_rows)
 
-	announcement_label = Label.new()
-	announcement_label.position = Vector2(290.0, 205.0)
-	announcement_label.size = Vector2(700.0, 48.0)
-	announcement_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	announcement_label.add_theme_font_size_override("font_size", 30)
-	announcement_label.add_theme_constant_override("outline_size", 7)
-	announcement_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.82))
-	announcement_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(announcement_label)
+	_build_announcement()
+	_build_results()
 
+
+func _build_announcement() -> void:
+	announcement_panel = PanelContainer.new()
+	announcement_panel.position = Vector2(340.0, 44.0)
+	announcement_panel.size = Vector2(600.0, 88.0)
+	announcement_panel.visible = false
+	announcement_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	announcement_panel.add_theme_stylebox_override("panel", _panel_style(Color(0.018, 0.026, 0.04, 0.86), Color(0.64, 0.72, 0.78, 0.42)))
+	add_child(announcement_panel)
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 18)
+	margin.add_theme_constant_override("margin_right", 18)
+	margin.add_theme_constant_override("margin_top", 4)
+	margin.add_theme_constant_override("margin_bottom", 4)
+	announcement_panel.add_child(margin)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 16)
+	margin.add_child(row)
+	var killer_card := _portrait_card()
+	announcement_killer_name = killer_card.get("name_label") as Label
+	announcement_killer_portrait = killer_card.get("portrait") as TextureRect
+	row.add_child(killer_card.get("root") as Control)
+	announcement_phrase = Label.new()
+	announcement_phrase.custom_minimum_size = Vector2(190.0, 64.0)
+	announcement_phrase.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	announcement_phrase.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	announcement_phrase.add_theme_font_size_override("font_size", 21)
+	announcement_phrase.add_theme_constant_override("outline_size", 5)
+	announcement_phrase.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.8))
+	row.add_child(announcement_phrase)
+	row.add_child(_build_kill_icon())
+	var victim_card := _portrait_card()
+	announcement_victim_name = victim_card.get("name_label") as Label
+	announcement_victim_portrait = victim_card.get("portrait") as TextureRect
+	row.add_child(victim_card.get("root") as Control)
+
+
+func _portrait_card() -> Dictionary:
+	var root := VBoxContainer.new()
+	root.custom_minimum_size = Vector2(82.0, 78.0)
+	root.add_theme_constant_override("separation", 2)
+	var name_label := Label.new()
+	name_label.custom_minimum_size = Vector2(82.0, 18.0)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.add_theme_font_size_override("font_size", 12)
+	name_label.add_theme_color_override("font_color", Color("e4edf4"))
+	root.add_child(name_label)
+	var frame := PanelContainer.new()
+	frame.custom_minimum_size = Vector2(56.0, 56.0)
+	frame.add_theme_stylebox_override("panel", _panel_style(Color(0.08, 0.1, 0.13, 0.92), Color("a9bbc7")))
+	root.add_child(frame)
+	var portrait := TextureRect.new()
+	portrait.custom_minimum_size = Vector2(56.0, 56.0)
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	frame.add_child(portrait)
+	return {"root": root, "name_label": name_label, "portrait": portrait}
+
+
+func _build_kill_icon() -> Control:
+	return KillIconScript.new() as KillFeedIcon
+
+
+func _build_results() -> void:
 	result_panel = PanelContainer.new()
 	result_panel.position = Vector2(310.0, 205.0)
 	result_panel.size = Vector2(660.0, 325.0)
@@ -151,49 +246,117 @@ func _refresh_timer() -> void:
 	timer_label.text = "%02d:%02d" % [total_seconds / 60, total_seconds % 60]
 
 
-func _refresh_board() -> void:
-	if board_label == null:
+func _refresh_board(force := false) -> void:
+	if board_rows == null:
 		return
-	board_label.text = ("比分榜　K / D / A　[Tab 收起]\n" + _table_text(false)) if expanded else "比分　[Tab 展开]\n%s" % _local_row()
+	var signature := "%s|%s|%s" % [expanded, JSON.stringify(current_state.get("stats", [])), JSON.stringify(latency_by_actor)]
+	if not force and signature == board_signature:
+		return
+	board_signature = signature
+	for child in board_rows.get_children():
+		child.queue_free()
+	board_header.text = "网络　玩家　　　　　　 K / D / A　[松开 Tab 收起]" if expanded else "比分　[按住 Tab 展开]"
+	if expanded:
+		for value in current_state.get("stats", []):
+			_add_score_row(value as Dictionary)
+	else:
+		var local_row := _stat(local_actor_id)
+		if local_row.is_empty():
+			var waiting := Label.new()
+			waiting.text = "等待比赛数据…"
+			waiting.add_theme_color_override("font_color", Color("a8bbc7"))
+			board_rows.add_child(waiting)
+		else:
+			_add_score_row(local_row)
 
 
-func _local_row() -> String:
+func _add_score_row(row: Dictionary) -> void:
+	var line := HBoxContainer.new()
+	line.custom_minimum_size.y = 23.0
+	line.add_theme_constant_override("separation", 5)
+	board_rows.add_child(line)
+	var quality := QualityIconScript.new() as NetworkQualityIcon
+	quality.set_latency(int(latency_by_actor.get(int(row.get("actor_id", 0)), -1)))
+	line.add_child(quality)
+	var name_label := Label.new()
+	name_label.custom_minimum_size = Vector2(205.0, 22.0)
+	name_label.text = "%s %s" % ["▶" if int(row.get("actor_id", 0)) == local_actor_id else " ", str(row.get("name", "玩家")).left(14)]
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	name_label.add_theme_color_override("font_color", Color("d9e7f0"))
+	line.add_child(name_label)
+	var kda := Label.new()
+	kda.custom_minimum_size = Vector2(110.0, 22.0)
+	kda.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	kda.text = "%2d / %2d / %2d" % [int(row.get("kills", 0)), int(row.get("deaths", 0)), int(row.get("assists", 0))]
+	kda.add_theme_color_override("font_color", Color("f0f4f7"))
+	line.add_child(kda)
+
+
+func _apply_network_quality(rows: Array) -> void:
+	for value in rows:
+		var row := value as Dictionary
+		var latency := int(row.get("latency_ms", -1))
+		latency_by_actor[int(row.get("actor_id", 0))] = roundi(float(latency) / 25.0) * 25 if latency >= 0 else -1
+
+
+func _result_table_text() -> String:
+	var lines: Array[String] = ["玩家　　　　　　 K / D / A　　输出　　承伤"]
 	for value in current_state.get("stats", []):
 		var row := value as Dictionary
-		if int(row.get("actor_id", 0)) == local_actor_id:
-			return _format_row(row, false)
-	return "等待比赛数据…"
-
-
-func _table_text(include_damage: bool) -> String:
-	var lines: Array[String] = []
-	if include_damage:
-		lines.append("玩家　　　　　　 K / D / A　　输出　　承伤")
-	for value in current_state.get("stats", []):
-		lines.append(_format_row(value as Dictionary, include_damage))
+		var marker := "▶" if int(row.get("actor_id", 0)) == local_actor_id else " "
+		lines.append("%s %-14s  %2d / %2d / %2d　%5d　%5d" % [
+			marker, str(row.get("name", "玩家")).left(14), int(row.get("kills", 0)), int(row.get("deaths", 0)), int(row.get("assists", 0)),
+			roundi(float(row.get("damage_dealt", 0.0))), roundi(float(row.get("damage_taken", 0.0))),
+		])
 	return "\n".join(lines)
 
 
-func _format_row(row: Dictionary, include_damage: bool) -> String:
-	var marker := "▶" if int(row.get("actor_id", 0)) == local_actor_id else " "
-	var base := "%s %-14s  %2d / %2d / %2d" % [
-		marker,
-		str(row.get("name", "玩家")).left(14),
-		int(row.get("kills", 0)),
-		int(row.get("deaths", 0)),
-		int(row.get("assists", 0)),
-	]
-	if include_damage:
-		base += "　%5d　%5d" % [roundi(float(row.get("damage_dealt", 0.0))), roundi(float(row.get("damage_taken", 0.0)))]
-	return base
+func _streak_title(streak: int, phrase: String) -> String:
+	var prefix := ""
+	match streak:
+		1: prefix = "一破"
+		2: prefix = "双连"
+		3: prefix = "三连"
+		4: prefix = "四连"
+		5: prefix = "五连"
+		6: prefix = "六连"
+		_: prefix = "七连" if streak >= 7 else ""
+	return "%s·%s" % [prefix, phrase] if not prefix.is_empty() and not phrase.is_empty() else phrase
+
+
+func _portrait_texture(actor_id: int) -> Texture2D:
+	var participant := participants_by_actor.get(actor_id, {}) as Dictionary
+	var hero_id := str(participant.get("hero_id", "placeholder_vanguard"))
+	var source := HeroCatalog.create(hero_id).sprite_texture
+	if source == null:
+		return null
+	var normalized_region := Rect2(0.12, 0.0, 0.76, 0.62)
+	if hero_id in ["bear_grylls_jungler", "chu_ying"]:
+		normalized_region = Rect2(0.16, 0.0, 0.68, 0.48)
+	var atlas := AtlasTexture.new()
+	atlas.atlas = source
+	atlas.region = Rect2(
+		normalized_region.position.x * source.get_width(),
+		normalized_region.position.y * source.get_height(),
+		normalized_region.size.x * source.get_width(),
+		normalized_region.size.y * source.get_height()
+	)
+	return atlas
 
 
 func _actor_name(actor_id: int) -> String:
+	var row := _stat(actor_id)
+	if not row.is_empty():
+		return str(row.get("name", "玩家"))
+	return str((participants_by_actor.get(actor_id, {}) as Dictionary).get("display_name", "环境" if actor_id <= 0 else "玩家"))
+
+
+func _stat(actor_id: int) -> Dictionary:
 	for value in current_state.get("stats", []):
 		var row := value as Dictionary
 		if int(row.get("actor_id", 0)) == actor_id:
-			return str(row.get("name", "玩家"))
-	return "玩家"
+			return row
+	return {}
 
 
 func _panel_style(background: Color, border: Color) -> StyleBoxFlat:

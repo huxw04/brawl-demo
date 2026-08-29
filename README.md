@@ -42,7 +42,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1
 ```
 
 The distributable ZIP is written to
-`dist/BrawlDemo-v0.4.2-windows-x86_64.zip`. The generated `dist/` directory and
+`dist/BrawlDemo-v0.4.3-windows-x86_64.zip`. The generated `dist/` directory and
 local export templates are intentionally excluded from Git.
 
 The launcher opens two shared-logic scenes:

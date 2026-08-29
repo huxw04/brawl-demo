@@ -16,7 +16,7 @@ signal entity_snapshot_received(snapshot: Dictionary)
 enum State { OFFLINE, CONNECTING, LOBBY, LOADING_MATCH, IN_MATCH }
 
 const PROTOCOL_VERSION := 1
-const GAME_VERSION := "0.4.2-match-rules"
+const GAME_VERSION := "0.4.3-score-ui"
 const DEFAULT_PORT := 24567
 const MAX_PLAYERS := 4
 const SERVER_PEER_ID := 1
@@ -132,6 +132,18 @@ func is_host() -> bool:
 
 func local_peer_id() -> int:
 	return multiplayer.get_unique_id() if multiplayer.has_multiplayer_peer() else 0
+
+
+func peer_round_trip_time_ms(peer_id: int) -> int:
+	if peer_id == local_peer_id():
+		return 0
+	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet == null:
+		return -1
+	var peer := enet.get_peer(peer_id)
+	if peer == null:
+		return -1
+	return maxi(0, int(peer.get_statistic(ENetPacketPeer.PEER_ROUND_TRIP_TIME)))
 
 
 func local_player() -> Dictionary:

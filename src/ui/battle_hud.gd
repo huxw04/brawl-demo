@@ -21,6 +21,7 @@ var targeting_label: Label
 var status_effect_label: Label
 var ability_icons: Dictionary = {}
 var respawn_mode_enabled := false
+var top_status_root: Control
 
 
 func setup(p_player: CombatActor, p_bot: CombatActor) -> void:
@@ -33,30 +34,41 @@ func set_respawn_mode(enabled: bool) -> void:
 	respawn_mode_enabled = enabled
 
 
+func set_top_status_visible(value: bool) -> void:
+	if top_status_root != null:
+		top_status_root.visible = value
+	if state_label != null:
+		state_label.visible = value
+
+
 func _build_ui() -> void:
 	var root := Control.new()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
-	player_hp = _bar(root, Rect2(42.0, 24.0, 360.0, 22.0), player.definition.max_hp, player.relation_color(), Color("d8e5ec"), 2)
-	player_status = _bar(root, Rect2(42.0, 50.0, 360.0, 10.0), player.definition.max_energy, player.definition.status_bar_color, Color("414d5a"), 1)
+	top_status_root = Control.new()
+	top_status_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	top_status_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(top_status_root)
+	player_hp = _bar(top_status_root, Rect2(42.0, 24.0, 360.0, 22.0), player.definition.max_hp, player.relation_color(), Color("d8e5ec"), 2)
+	player_status = _bar(top_status_root, Rect2(42.0, 50.0, 360.0, 10.0), player.definition.max_energy, player.definition.status_bar_color, Color("414d5a"), 1)
 	player_status.visible = player.definition.max_energy > 0.0 and not player.definition.status_bar_id.is_empty()
-	player_stamina = _bar(root, Rect2(42.0, 66.0, 270.0, 15.0), player.definition.max_stamina, Color("84dcf2"), Color("c9f3ff"), 2)
+	player_stamina = _bar(top_status_root, Rect2(42.0, 66.0, 270.0, 15.0), player.definition.max_stamina, Color("84dcf2"), Color("c9f3ff"), 2)
 	player_stamina_ring = StaminaRingScript.new() as StaminaRing
 	player_stamina_ring.position = Vector2(412.0, 14.0)
 	player_stamina_ring.size = Vector2(58.0, 58.0)
 	player_stamina_ring.setup(player)
-	root.add_child(player_stamina_ring)
-	bot_hp = _bar(root, Rect2(878.0, 24.0, 360.0, 22.0), bot.definition.max_hp, bot.relation_color(), Color("d8e5ec"), 2)
-	bot_status = _bar(root, Rect2(878.0, 50.0, 360.0, 10.0), bot.definition.max_energy, bot.definition.status_bar_color, Color("414d5a"), 1)
+	top_status_root.add_child(player_stamina_ring)
+	bot_hp = _bar(top_status_root, Rect2(878.0, 24.0, 360.0, 22.0), bot.definition.max_hp, bot.relation_color(), Color("d8e5ec"), 2)
+	bot_status = _bar(top_status_root, Rect2(878.0, 50.0, 360.0, 10.0), bot.definition.max_energy, bot.definition.status_bar_color, Color("414d5a"), 1)
 	bot_status.visible = bot.definition.max_energy > 0.0 and not bot.definition.status_bar_id.is_empty()
-	var player_name := _label(root, Rect2(42.0, 2.0, 360.0, 22.0), "PLAYER · %s" % player.actor_name, 16)
+	var player_name := _label(top_status_root, Rect2(42.0, 2.0, 360.0, 22.0), "PLAYER · %s" % player.actor_name, 16)
 	player_name.add_theme_color_override("font_color", player.relation_color())
-	var bot_name := _label(root, Rect2(878.0, 2.0, 360.0, 22.0), "%s · BOT" % bot.actor_name, 16)
+	var bot_name := _label(top_status_root, Rect2(878.0, 2.0, 360.0, 22.0), "%s · BOT" % bot.actor_name, 16)
 	bot_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	bot_name.add_theme_color_override("font_color", bot.relation_color())
 	var resource_text := "%s\nSTAMINA" % player.definition.status_bar_label if player_status.visible else "STAMINA"
-	var resource_names := _label(root, Rect2(318.0, 47.0, 180.0, 38.0), resource_text, 11)
+	var resource_names := _label(top_status_root, Rect2(318.0, 47.0, 180.0, 38.0), resource_text, 11)
 	resource_names.add_theme_color_override("font_color", Color("8da3b3"))
 	var skill_row := HBoxContainer.new()
 	skill_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -73,7 +85,7 @@ func _build_ui() -> void:
 	targeting_label = _label(root, Rect2(420.0, 579.0, 440.0, 30.0), "右键移动 · 左键普攻", 17)
 	targeting_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	targeting_label.add_theme_color_override("font_color", Color("c9dae5"))
-	status_effect_label = _label(root, Rect2(42.0, 86.0, 430.0, 25.0), "", 13)
+	status_effect_label = _label(top_status_root, Rect2(42.0, 86.0, 430.0, 25.0), "", 13)
 	status_effect_label.add_theme_color_override("font_color", Color("f3c879"))
 	message_label = _label(root, Rect2(390.0, 82.0, 500.0, 52.0), "", 30)
 	message_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

@@ -62,6 +62,13 @@ func _run() -> void:
 		await physics_frame
 	_check(not motor.pending_basic, "buffered basic should clear after reaching acquisition range")
 	_check(target.hp < target.definition.max_hp, "buffered basic should execute and damage after pathing into range")
+	# A roll can carry an actor across the final waypoint between movement
+	# updates. The motor should recognize that crossing instead of walking back.
+	hero.reset_runtime(Vector3(-4.0, 0.05, 2.0))
+	motor.set_destination(Vector3(-2.5, 0.0, 2.0))
+	hero.global_position = Vector3(-2.25, 0.05, 2.0)
+	motor.advance_movement()
+	_check(motor.path.is_empty() and hero.move_intent.length_squared() < 0.001, "crossing a destination during roll should finish navigation without walking back")
 	motor.queue_free()
 	hero.queue_free()
 	target.queue_free()
