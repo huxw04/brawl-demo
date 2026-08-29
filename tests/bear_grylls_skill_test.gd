@@ -18,6 +18,7 @@ func _run() -> void:
 	root.add_child(hero)
 	hero.setup(BearGryllsJungler.create(), 1, "贝尔", CombatActor.Relation.SELF)
 	hero.battle_id = 1
+	_check(hero.hero_runtime is BearHeroRuntime, "Bear should use the dedicated authoritative HeroRuntime")
 	var target_definition := PlaceholderHero.create()
 	target_definition.max_hp = 400.0
 	target = CombatActor.new()
@@ -96,6 +97,7 @@ func _run() -> void:
 	_check(target.status_controller.has_tag("stunned"), "poison mark should stun for one second")
 	_check(is_equal_approx(target.hp, 100.0), "poison mark should have no immediate damage (actual HP %.2f)" % target.hp)
 	_check(target.pending_damage_events.size() == 1, "poison mark should queue one delayed hit")
+	_check(target.get_node_or_null("BearPoisonMark") != null, "poison mark visual should attach to the marked target")
 	await _frames(124)
 	_check(absf(target.hp - (100.0 - poison_expected)) < 0.25, "poison should deal 15 percent missing HP after two seconds (actual HP %.2f)" % target.hp)
 

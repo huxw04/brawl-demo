@@ -31,6 +31,14 @@ func _run() -> void:
 	_check(HeroCatalog.display_name("bear_grylls_jungler") == "贝爷", "Bear display name should be shortened")
 	_check(HeroCatalog.display_name("nailoong") == "奶龙", "Nailoong should appear in the hero catalog")
 	_check("nailoong" in HeroCatalog.IDS, "Nailoong id should be selectable")
+	_check(hero.hero_runtime is NailoongHeroRuntime, "Nailoong should use the dedicated hero runtime")
+	hero.nailoong_roll_direction = Vector3(0.6, 0.0, 0.8)
+	hero.nailoong_fire_emit_index = 4
+	var runtime_snapshot := hero.hero_runtime_snapshot()
+	hero.nailoong_roll_direction = Vector3.LEFT
+	hero.nailoong_fire_emit_index = 0
+	hero.hero_runtime.apply_runtime_snapshot(runtime_snapshot)
+	_check(hero.nailoong_roll_direction.is_equal_approx(Vector3(0.6, 0.0, 0.8)) and hero.nailoong_fire_emit_index == 4, "Nailoong runtime state should round-trip through its snapshot seam")
 	var sprite_texture := load("res://assets/heroes/nailoong/sprites/nailoong_idle_v1.png") as Texture2D
 	var image := sprite_texture.get_image()
 	_check(not image.is_empty() and image.get_pixel(0, 0).a < 0.05, "approved Nailoong sprite should have a transparent corner")
@@ -150,6 +158,26 @@ func _run() -> void:
 	_check(not get_nodes_in_group("nailoong_heal_crosses").is_empty(), "laugh healing ticks should raise green cross symbols")
 	await _frames(280)
 	_check(is_equal_approx(hero.hp, 140.0), "laugh should heal 8 health ten times over five seconds")
+
+	# Replica action_elapsed only changes when a 12 Hz snapshot arrives. Spin
+	# phase must nevertheless advance every rendered frame on the client.
+	hero.current_ability = roll
+	hero.ability_phase = "active"
+	hero.action_elapsed = 1.0
+	hero.actor_presentation.nailoong_spin_action = ""
+	hero.actor_presentation.update(1.0 / 60.0)
+	var roll_angle_one := float(hero.sprite.get_meta("visual_angle", 0.0))
+	hero.actor_presentation.update(1.0 / 60.0)
+	var roll_angle_two := float(hero.sprite.get_meta("visual_angle", 0.0))
+	_check(not is_equal_approx(roll_angle_one, roll_angle_two), "replica roll rotation should advance between authority snapshots")
+	hero.current_ability = basic
+	hero.ability_phase = "active"
+	hero.action_elapsed = 0.1
+	hero.actor_presentation.update(1.0 / 60.0)
+	var tail_angle_one := float(hero.sprite.get_meta("visual_angle", 0.0))
+	hero.actor_presentation.update(1.0 / 60.0)
+	var tail_angle_two := float(hero.sprite.get_meta("visual_angle", 0.0))
+	_check(not is_equal_approx(tail_angle_one, tail_angle_two), "replica tail-sweep rotation should advance between authority snapshots")
 
 	hero.queue_free()
 	target.queue_free()

@@ -17,8 +17,8 @@ func _run() -> void:
 	var tick_commands := stream.advance_tick()
 	_check(tick_commands.size() == 2, "commands for the same tick should drain together")
 	_check(tick_commands[0].sequence < tick_commands[1].sequence, "commands should retain sequence order")
-	var encoded := first.to_dict()
-	var decoded := BattleCommand.from_dict(encoded)
+	var encoded := first.to_packet()
+	var decoded := BattleCommand.from_packet(encoded)
 	_check(decoded.actor_id == first.actor_id and decoded.world_target.is_equal_approx(first.world_target), "command serialization should round-trip")
 
 	var rng_a := BattleRng.new(424242)

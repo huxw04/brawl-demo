@@ -2,6 +2,7 @@ class_name ChuYingStone
 extends Node3D
 
 var source: CombatActor
+var entity_id := 0
 var landing_ability: AbilityDefinition
 var travel_ability: AbilityDefinition
 var unit_id := 0
@@ -23,7 +24,8 @@ func configure(p_source: CombatActor, p_ability: AbilityDefinition, p_position: 
 	add_to_group("chu_ying_stones")
 	add_to_group("deterministic_combat_units")
 	add_to_group("transient_combat_vfx")
-	_create_visual()
+	if get_tree().get_first_node_in_group("authority_event_presentation") == null:
+		_create_visual()
 
 
 func _create_visual() -> void:
@@ -50,7 +52,8 @@ func _physics_process(delta: float) -> void:
 		fall_remaining = maxf(0.0, fall_remaining - delta)
 		var progress := 1.0 - fall_remaining / 0.28
 		global_position = ground_position + Vector3.UP * lerpf(4.2, 0.0, progress * progress)
-		visual.rotation.y += delta * 9.0
+		if visual != null:
+			visual.rotation.y += delta * 9.0
 		if fall_remaining <= 0.0:
 			global_position = ground_position
 			_land()
@@ -79,8 +82,9 @@ func _update_flight(delta: float) -> void:
 	var next := global_position.move_toward(flight_destination, 10.5 * delta)
 	_damage_segment(previous, next)
 	global_position = next
-	visual.rotation.y += delta * 18.0
-	visual.rotation.z += delta * 13.0
+	if visual != null:
+		visual.rotation.y += delta * 18.0
+		visual.rotation.z += delta * 13.0
 	if global_position.distance_squared_to(flight_destination) <= 0.0025:
 		queue_free()
 
@@ -163,6 +167,17 @@ func combat_snapshot() -> Dictionary:
 		"remaining": roundi(ground_remaining * 10000.0),
 		"flying": flying,
 	}
+
+
+func authoritative_snapshot() -> Dictionary:
+	var snapshot := combat_snapshot()
+	snapshot["entity_id"] = entity_id
+	snapshot["entity_kind"] = "chu_ying_stone"
+	snapshot["attack_id"] = unit_id
+	snapshot["source_id"] = source.battle_id if source != null and is_instance_valid(source) else 0
+	snapshot["ability_id"] = landing_ability.ability_id if landing_ability != null else ""
+	snapshot["vfx_id"] = landing_ability.vfx_id if landing_ability != null else "chu_ying_falling_stone"
+	return snapshot
 
 
 func _material(color: Color) -> StandardMaterial3D:

@@ -2,6 +2,7 @@ class_name DelayedGroundAttack
 extends Node3D
 
 var source: CombatActor
+var entity_id := 0
 var ability: AbilityDefinition
 var attack_id := 0
 var remaining := 0.0
@@ -21,7 +22,8 @@ func configure(p_source: CombatActor, p_ability: AbilityDefinition, p_attack_id:
 	top_level = true
 	global_position = Vector3(center.x, 0.065, center.z)
 	add_to_group("transient_combat_vfx")
-	_spawn_indicator()
+	if get_tree().get_first_node_in_group("authority_event_presentation") == null:
+		_spawn_indicator()
 
 
 func _physics_process(delta: float) -> void:
@@ -34,6 +36,9 @@ func _physics_process(delta: float) -> void:
 	if remaining > 0.0:
 		return
 	_detonate()
+	var authority := source.match_authority() if source != null and is_instance_valid(source) else null
+	if authority != null:
+		authority.unregister_entity(entity_id, &"detonated")
 	set_physics_process(false)
 	queue_free()
 
@@ -131,7 +136,8 @@ func _detonate() -> void:
 		var hp_before: float = target.hp
 		if target.receive_hit(source, ability, direction.normalized(), attack_id, ability.delayed_damage):
 			source.on_ability_hit(ability, minf(hp_before, ability.delayed_damage))
-	_spawn_shockwave()
+	if source.match_authority() == null:
+		_spawn_shockwave()
 
 
 func _spawn_shockwave() -> void:
@@ -180,3 +186,21 @@ func _material(color: Color) -> StandardMaterial3D:
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
 	material.no_depth_test = true
 	return material
+
+
+func authoritative_snapshot() -> Dictionary:
+	return {
+		"entity_id": entity_id,
+		"entity_kind": "delayed_attack",
+		"source_id": source.battle_id if source != null and is_instance_valid(source) else 0,
+		"ability_id": ability.ability_id if ability != null else "",
+		"vfx_id": ability.vfx_id if ability != null else "",
+		"attack_id": attack_id,
+		"position": [_quantize(global_position.x), _quantize(global_position.y), _quantize(global_position.z)],
+		"remaining": _quantize(remaining),
+		"radius": _quantize(radius),
+	}
+
+
+func _quantize(value: float) -> int:
+	return roundi(value * 10000.0)

@@ -25,6 +25,7 @@ func _run() -> void:
 	target.battle_id = 2
 	target.global_position = Vector3(1.0, 0.0, 0.0)
 	await _frames(4)
+	_check(hero.hero_runtime is SwordShieldHeroRuntime, "sword-and-shield dog should use the dedicated hero runtime")
 	var sword_layer := hero.visual_layer_sprites.get("shield_dog_sword") as Sprite3D
 	var shield_layer := hero.visual_layer_sprites.get("shield_dog_shield") as Sprite3D
 	_check(absf(float(sword_layer.get_meta("visual_angle", 0.0)) - 1.50) < 0.03, "idle sword should point vertically upward")

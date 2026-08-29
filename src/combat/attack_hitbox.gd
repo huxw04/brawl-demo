@@ -102,7 +102,7 @@ func _try_hit(target: CombatActor) -> void:
 	var hp_before := target.hp
 	var hit_landed := false
 	if damage <= 0.0:
-		hit_landed = not target.is_defeated and target.invulnerable_remaining <= 0.0 and target.is_targetable()
+		hit_landed = target.can_receive_attack()
 	else:
 		hit_landed = target.receive_hit(source, ability, source.facing, attack_id, damage)
 	if hit_landed:

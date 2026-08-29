@@ -10,16 +10,20 @@ var resolved_destination := Vector3.ZERO
 var direct_steering_destination := false
 var pending_basic := false
 var pending_basic_target := Vector3.ZERO
+var continuous_session: ContinuousAbilitySession
 
 
 func setup(p_actor: CombatActor, p_pathfinder: ArenaPathfinder) -> void:
 	actor = p_actor
 	pathfinder = p_pathfinder
+	continuous_session = ContinuousAbilitySession.new()
+	continuous_session.setup(actor)
 
 
 func apply_command(command: BattleCommand) -> bool:
 	match command.type:
 		BattleCommand.Type.MOVE_TO:
+			continuous_session.release_for_movement()
 			return set_destination(command.world_target, true)
 		BattleCommand.Type.STOP:
 			stop()
@@ -33,6 +37,8 @@ func apply_command(command: BattleCommand) -> bool:
 		BattleCommand.Type.CAST_ABILITY:
 			pending_basic = false
 			var cast_ability := actor.ability_by_id(command.ability_id)
+			if cast_ability == null or cast_ability.hold_to_channel:
+				return false
 			var cast_target := command.world_target
 			if cast_ability != null and cast_ability.face_move_direction_on_cast and command.direction.length_squared() > 0.001:
 				actor.facing = Vector3(command.direction.x, 0.0, command.direction.z).normalized()
@@ -43,14 +49,15 @@ func apply_command(command: BattleCommand) -> bool:
 			return actor.try_ability(command.ability_id)
 		BattleCommand.Type.BEGIN_ABILITY:
 			pending_basic = false
+			var held_ability := actor.ability_by_id(command.ability_id)
+			if held_ability == null or not held_ability.hold_to_channel:
+				return false
 			actor.set_ability_target(command.world_target)
 			_face_target(command.world_target)
 			stop()
-			return actor.try_ability(command.ability_id)
+			return continuous_session.begin(command.ability_id)
 		BattleCommand.Type.END_ABILITY:
-			var was_active := actor.current_ability != null and actor.current_ability.ability_id == command.ability_id
-			actor.release_held_ability(command.ability_id)
-			return was_active
+			return continuous_session.end(command.ability_id)
 		BattleCommand.Type.ROLL:
 			pending_basic = false
 			if command.direction.length_squared() > 0.001:
@@ -61,9 +68,7 @@ func apply_command(command: BattleCommand) -> bool:
 			pending_basic = false
 			return actor.try_jump()
 		BattleCommand.Type.CANCEL_ABILITY:
-			var had_cancelable := actor.current_ability != null and actor.current_ability.vfx_id == "nailoong_roll"
-			actor.cancel_nailoong_roll_for_command()
-			return had_cancelable
+			return continuous_session.cancel_special()
 	return false
 
 
@@ -90,6 +95,7 @@ func set_destination(target: Vector3, clear_pending := true) -> bool:
 
 
 func advance_movement() -> void:
+	continuous_session.refresh()
 	if actor == null or actor.is_defeated:
 		return
 	if pending_basic and _advance_pending_basic():
@@ -123,6 +129,10 @@ func stop(clear_pending := true) -> void:
 	direct_steering_destination = false
 	if actor != null:
 		actor.set_move_intent(Vector2.ZERO)
+
+
+func force_cleanup_continuous_ability() -> bool:
+	return continuous_session.force_cleanup() if continuous_session != null else false
 
 
 func _advance_pending_basic() -> bool:

@@ -5,19 +5,27 @@ signal targeting_changed(ability_id: String)
 
 var actor: CombatActor
 var arena: ArenaWorld
-var stream: BattleCommandStream
+var stream: Node
 var pending_ability := ""
 var mouse_ground := Vector3.ZERO
+var movement_only := false
+var held_input_ability := ""
 
 
-func setup(p_actor: CombatActor, p_arena: ArenaWorld, p_stream: BattleCommandStream) -> void:
+func setup(p_actor: CombatActor, p_arena: ArenaWorld, p_stream: Node, p_movement_only := false) -> void:
 	actor = p_actor
 	arena = p_arena
 	stream = p_stream
+	movement_only = p_movement_only
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if actor == null:
+		return
+	if actor.is_defeated:
+		pending_ability = ""
+		held_input_ability = ""
+		targeting_changed.emit("")
 		return
 	if event is InputEventMouseMotion:
 		mouse_ground = arena.screen_to_ground(event.position)
@@ -27,7 +35,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			pending_ability = ""
 			targeting_changed.emit("")
 			stream.submit(BattleCommand.create(actor.battle_id, BattleCommand.Type.MOVE_TO, mouse_ground))
-		elif event.button_index == MOUSE_BUTTON_LEFT:
+		elif event.button_index == MOUSE_BUTTON_LEFT and not movement_only:
 			if pending_ability.is_empty():
 				stream.submit(BattleCommand.create(actor.battle_id, BattleCommand.Type.BASIC_ATTACK, mouse_ground))
 			else:
@@ -37,8 +45,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				pending_ability = ""
 				targeting_changed.emit("")
 	elif event is InputEventKey and not event.echo:
+		if movement_only:
+			if event.pressed:
+				match event.keycode:
+					KEY_S: stream.submit(BattleCommand.create(actor.battle_id, BattleCommand.Type.STOP))
+					KEY_SHIFT: _submit_roll()
+					KEY_SPACE: stream.submit(BattleCommand.create(actor.battle_id, BattleCommand.Type.JUMP))
+			return
 		if event.pressed:
 			match event.keycode:
+				KEY_S: stream.submit(BattleCommand.create(actor.battle_id, BattleCommand.Type.STOP))
 				KEY_Q: _press_ability("skill_q")
 				KEY_W: _press_ability("skill_w")
 				KEY_E: _press_ability("skill_e")
@@ -55,10 +71,13 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _press_ability(id: String) -> void:
 	var ability := actor.ability_by_id(id)
-	if ability == null or ability.disabled:
+	if ability == null or ability.disabled or not actor.can_select_ability(id):
+		pending_ability = ""
+		targeting_changed.emit("")
 		return
 	if ability.hold_to_channel:
 		pending_ability = ""
+		held_input_ability = id
 		targeting_changed.emit("")
 		var command := BattleCommand.create(actor.battle_id, BattleCommand.Type.BEGIN_ABILITY, actor.global_position + actor.facing)
 		command.ability_id = id
@@ -68,6 +87,10 @@ func _press_ability(id: String) -> void:
 
 
 func _release_ability(id: String) -> void:
+	var ability := actor.ability_by_id(id)
+	if ability == null or not ability.hold_to_channel or held_input_ability != id:
+		return
+	held_input_ability = ""
 	var command := BattleCommand.create(actor.battle_id, BattleCommand.Type.END_ABILITY)
 	command.ability_id = id
 	stream.submit(command)
@@ -75,7 +98,7 @@ func _release_ability(id: String) -> void:
 
 func _select_ability(id: String) -> void:
 	var ability := actor.ability_by_id(id)
-	if ability == null or ability.disabled:
+	if ability == null or ability.disabled or not actor.can_select_ability(id):
 		pending_ability = ""
 		targeting_changed.emit("")
 		return

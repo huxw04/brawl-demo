@@ -7,6 +7,8 @@ const ArenaScript = preload("res://src/presentation/arena_world.gd")
 const CommandRuntimeScript = preload("res://src/commands/battle_command_runtime.gd")
 const MoveIndicatorScript = preload("res://src/presentation/move_destination_indicator.gd")
 const TargetingPreviewScript = preload("res://src/presentation/ability_targeting_preview.gd")
+const MatchAuthorityScript = preload("res://src/core/match_authority.gd")
+const AuthorityEventPresentationScript = preload("res://src/presentation/authority_event_presentation.gd")
 
 var arena: ArenaWorld
 var player: CombatActor
@@ -21,19 +23,29 @@ var pathfinder: ArenaPathfinder
 var selection_layer: CanvasLayer
 var move_indicator: MoveDestinationIndicator
 var targeting_preview: AbilityTargetingPreview
+var match_authority: MatchAuthority
+var authority_presentation: AuthorityEventPresentation
+var returning_to_launcher := false
 var battle_over := true
 
 
 func _ready() -> void:
+	match_authority = MatchAuthorityScript.new() as MatchAuthority
+	match_authority.name = "MatchAuthority"
+	add_child(match_authority)
+	authority_presentation = AuthorityEventPresentationScript.new() as AuthorityEventPresentation
+	authority_presentation.name = "AuthorityEventPresentation"
+	add_child(authority_presentation)
+	authority_presentation.setup(match_authority)
 	arena = ArenaScript.new() as ArenaWorld
 	arena.title = "BATTLE TEST"
-	arena.include_test_walls = true
+	arena.configure(BrawlMapCatalog.default_test_map())
 	add_child(arena)
 	command_stream = BattleCommandStream.new()
 	command_stream.name = "BattleCommandStream"
 	add_child(command_stream)
 	pathfinder = ArenaPathfinder.new()
-	pathfinder.configure(arena.navigation_obstacles)
+	pathfinder.configure(arena.map_definition.playable_bounds(0.25), arena.navigation_obstacles)
 	command_runtime = CommandRuntimeScript.new() as BattleCommandRuntime
 	command_runtime.name = "BattleCommandRuntime"
 	add_child(command_runtime)
@@ -106,6 +118,7 @@ func start_battle(hero_id: String = "cheems_samurai") -> void:
 	var player_definition := HeroCatalog.create(hero_id)
 	player.setup(player_definition, 1, player_definition.display_name, CombatActor.Relation.SELF)
 	player.battle_id = 1
+	arena.set_camera_target(player)
 	bot = ActorScript.new() as CombatActor
 	add_child(bot)
 	bot.setup(PlaceholderHero.create(), 2, "BOT", CombatActor.Relation.ENEMY)
@@ -131,10 +144,13 @@ func start_battle(hero_id: String = "cheems_samurai") -> void:
 	hud = HUDScript.new() as BattleHUD
 	add_child(hud)
 	hud.setup(player, bot)
+	hud.return_to_menu_requested.connect(_request_return_to_launcher)
 	player_controller.targeting_changed.connect(hud.set_targeting)
 	player.defeated.connect(func(_actor: CombatActor) -> void: _end_battle("BOT 获胜"))
 	bot.defeated.connect(func(_actor: CombatActor) -> void: _end_battle("PLAYER 获胜"))
 	_reset_battle()
+	match_authority.register_entity(player, &"actor", player.battle_id, player.authoritative_actor_state())
+	match_authority.register_entity(bot, &"actor", bot.battle_id, bot.authoritative_actor_state())
 
 
 func _add_motor(actor: CombatActor) -> void:
@@ -156,14 +172,27 @@ func _on_player_command_processed(command: BattleCommand, accepted: bool) -> voi
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F1:
-			get_tree().change_scene_to_file("res://scenes/launcher.tscn")
 			get_viewport().set_input_as_handled()
+			_request_return_to_launcher()
 		elif event.keycode == KEY_F3:
 			CombatActor.debug_shapes = not CombatActor.debug_shapes
 			get_tree().call_group("debug_visuals", "refresh_debug_visibility")
 		elif event.keycode == KEY_F5:
 			if player != null:
 				_reset_battle()
+
+
+func _request_return_to_launcher() -> void:
+	if returning_to_launcher:
+		return
+	returning_to_launcher = true
+	set_process_input(false)
+	if player_controller != null:
+		player_controller.set_process_unhandled_input(false)
+	if command_runtime != null:
+		command_runtime.running = false
+		command_runtime.stop_all()
+	get_tree().change_scene_to_file.bind("res://scenes/launcher.tscn").call_deferred()
 
 
 func _end_battle(text: String) -> void:
@@ -186,8 +215,8 @@ func _reset_battle() -> void:
 		move_indicator.clear_destination()
 	if targeting_preview != null:
 		targeting_preview.clear()
-	player.reset_runtime(Vector3(-4.6, 0.05, 1.4))
-	bot.reset_runtime(Vector3(4.6, 0.05, 1.4))
+	player.reset_runtime(arena.map_definition.spawn_position(0))
+	bot.reset_runtime(arena.map_definition.spawn_position(1))
 	player.facing = Vector3.RIGHT
 	bot.facing = Vector3.LEFT
 	battle_over = false

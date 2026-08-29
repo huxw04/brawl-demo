@@ -5,6 +5,8 @@ const ArenaScript = preload("res://src/presentation/arena_world.gd")
 const CommandRuntimeScript = preload("res://src/commands/battle_command_runtime.gd")
 const MoveIndicatorScript = preload("res://src/presentation/move_destination_indicator.gd")
 const TargetingPreviewScript = preload("res://src/presentation/ability_targeting_preview.gd")
+const MatchAuthorityScript = preload("res://src/core/match_authority.gd")
+const AuthorityEventPresentationScript = preload("res://src/presentation/authority_event_presentation.gd")
 
 var hero: CombatActor
 var dummy: CombatActor
@@ -20,18 +22,28 @@ var targeting_preview: AbilityTargetingPreview
 var motor: CommandMotor
 var player_controller: MobaPlayerController
 var pathfinder: ArenaPathfinder
+var returning_to_launcher := false
+var match_authority: MatchAuthority
+var authority_presentation: AuthorityEventPresentation
 
 
 func _ready() -> void:
+	match_authority = MatchAuthorityScript.new() as MatchAuthority
+	match_authority.name = "MatchAuthority"
+	add_child(match_authority)
+	authority_presentation = AuthorityEventPresentationScript.new() as AuthorityEventPresentation
+	authority_presentation.name = "AuthorityEventPresentation"
+	add_child(authority_presentation)
+	authority_presentation.setup(match_authority)
 	arena = ArenaScript.new() as ArenaWorld
 	arena.title = "CHARACTER LAB"
-	arena.include_test_walls = true
+	arena.configure(BrawlMapCatalog.default_test_map())
 	arena.show_measurement_marker = true
 	add_child(arena)
 	command_stream = BattleCommandStream.new()
 	add_child(command_stream)
 	pathfinder = ArenaPathfinder.new()
-	pathfinder.configure(arena.navigation_obstacles)
+	pathfinder.configure(arena.map_definition.playable_bounds(0.25), arena.navigation_obstacles)
 	command_runtime = CommandRuntimeScript.new() as BattleCommandRuntime
 	command_runtime.name = "BattleCommandRuntime"
 	add_child(command_runtime)
@@ -50,8 +62,10 @@ func _ready() -> void:
 	var dummy_definition := PlaceholderHero.create()
 	dummy_definition.max_hp = 2400.0
 	dummy.setup(dummy_definition, 2, "训练假人", CombatActor.Relation.ENEMY)
+	dummy.battle_id = 2
 	dummy.global_position = Vector3(0.2, 0.05, 0.8)
 	dummy.facing = Vector3.LEFT
+	match_authority.register_entity(dummy, &"actor", dummy.battle_id, dummy.authoritative_actor_state())
 	_connect_events(dummy)
 	_build_lab_ui()
 	_log("3D 实验室就绪：红=Hitbox，绿=Hurtbox，蓝=Pushbox")
@@ -272,8 +286,8 @@ func _process(_delta: float) -> void:
 func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_F1:
-			_return_to_launcher()
 			get_viewport().set_input_as_handled()
+			_return_to_launcher()
 		elif event.keycode == KEY_F3:
 			_set_debug_shapes(not CombatActor.debug_shapes)
 			get_viewport().set_input_as_handled()
@@ -283,6 +297,7 @@ func _spawn_lab_hero(hero_id: String) -> void:
 	var spawn_position := Vector3(-3.5, 0.05, 0.8)
 	if hero != null:
 		spawn_position = hero.global_position
+		match_authority.unregister_entity(hero.entity_id, &"hero_changed")
 		hero.queue_free()
 	if player_controller != null:
 		player_controller.queue_free()
@@ -298,6 +313,7 @@ func _spawn_lab_hero(hero_id: String) -> void:
 	hero.ignore_ability_requirements = true
 	hero.global_position = spawn_position
 	hero.facing = Vector3.RIGHT
+	match_authority.register_entity(hero, &"actor", hero.battle_id, hero.authoritative_actor_state())
 	_connect_events(hero)
 	motor = command_runtime.register_actor(hero)
 	move_indicator.setup(hero)
@@ -348,8 +364,17 @@ func _log(text: String) -> void:
 
 
 func _return_to_launcher() -> void:
+	if returning_to_launcher:
+		return
+	returning_to_launcher = true
 	Engine.time_scale = 1.0
-	get_tree().change_scene_to_file("res://scenes/launcher.tscn")
+	set_process_input(false)
+	if player_controller != null:
+		player_controller.set_process_unhandled_input(false)
+	if command_runtime != null:
+		command_runtime.running = false
+		command_runtime.stop_all()
+	get_tree().change_scene_to_file.bind("res://scenes/launcher.tscn").call_deferred()
 
 
 func _exit_tree() -> void:

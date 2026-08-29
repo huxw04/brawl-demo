@@ -8,6 +8,10 @@ config_version=5
 config/name="Brawl Framework Demo"
 run/main_scene="res://scenes/launcher.tscn"
 
+[autoload]
+
+NetworkSession="*res://src/network/network_session.gd"
+
 [display]
 
 window/size/viewport_width=1280

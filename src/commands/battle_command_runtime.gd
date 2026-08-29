@@ -28,6 +28,7 @@ func register_actor(actor: CombatActor) -> CommandMotor:
 func unregister_actor(actor_id: int) -> void:
 	var existing = motors.get(actor_id)
 	if existing is CommandMotor:
+		(existing as CommandMotor).force_cleanup_continuous_ability()
 		(existing as CommandMotor).stop()
 		(existing as CommandMotor).queue_free()
 	motors.erase(actor_id)
@@ -36,6 +37,13 @@ func unregister_actor(actor_id: int) -> void:
 func stop_all() -> void:
 	for motor in motors.values():
 		(motor as CommandMotor).stop()
+
+
+func shutdown_all() -> void:
+	for motor in motors.values():
+		var command_motor := motor as CommandMotor
+		command_motor.force_cleanup_continuous_ability()
+		command_motor.stop()
 
 
 func _physics_process(_delta: float) -> void:

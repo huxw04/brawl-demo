@@ -42,15 +42,27 @@ func to_dict() -> Dictionary:
 	}
 
 
+func to_packet() -> Dictionary:
+	return to_dict()
+
+
 static func from_dict(data: Dictionary) -> BattleCommand:
 	var command := BattleCommand.new()
 	command.tick = int(data.get("tick", 0))
 	command.sequence = int(data.get("sequence", 0))
 	command.actor_id = int(data.get("actor_id", 0))
 	command.type = int(data.get("type", Type.STOP)) as Type
-	var target: Array = data.get("target", [0.0, 0.0, 0.0])
-	var facing: Array = data.get("direction", [0.0, 0.0, 0.0])
+	var target: Array = data.get("target", [0.0, 0.0, 0.0]) as Array
+	var facing: Array = data.get("direction", [0.0, 0.0, 0.0]) as Array
+	if target.size() < 3:
+		target = [0.0, 0.0, 0.0]
+	if facing.size() < 3:
+		facing = [0.0, 0.0, 0.0]
 	command.world_target = Vector3(float(target[0]), float(target[1]), float(target[2]))
 	command.direction = Vector3(float(facing[0]), float(facing[1]), float(facing[2]))
 	command.ability_id = str(data.get("ability_id", ""))
 	return command
+
+
+static func from_packet(packet: Dictionary) -> BattleCommand:
+	return from_dict(packet)

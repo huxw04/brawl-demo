@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "map_id": "stage_b_test_arena",
+  "map_version": 1,
+  "display_name": "角色测试场",
+  "size": [14.0, 9.0],
+  "floor_color": "263546",
+  "grid_color": "3b4d60",
+  "boundary_color": "526b80",
+  "camera": {
+    "orthographic_size": 11.5,
+    "position": [0.0, 10.8, 11.8],
+    "look_at": [0.0, 0.7, 0.0]
+  },
+  "spawn_points": [
+    {"id": "player_left", "position": [-4.6, 0.05, 1.4]},
+    {"id": "player_right", "position": [4.6, 0.05, 1.4]},
+    {"id": "player_left_lower", "position": [-4.6, 0.05, -1.8]},
+    {"id": "player_right_lower", "position": [4.6, 0.05, -1.8]}
+  ],
+  "obstacles": [
+    {"id": "high_wall", "kind": "box", "center": [3.4, 1.35, -0.9], "size": [0.42, 2.7, 3.0], "color": "755b89", "label": "高墙 / HIGH WALL"},
+    {"id": "low_wall", "kind": "box", "center": [-1.1, 0.38, -2.45], "size": [3.3, 0.76, 0.42], "color": "9b754d", "label": "矮墙 / LOW WALL"}
+  ]
+}

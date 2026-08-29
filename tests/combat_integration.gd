@@ -14,6 +14,7 @@ func _run() -> void:
 	var source := CombatActor.new()
 	root.add_child(source)
 	source.setup(PlaceholderHero.create(), 1, "source")
+	_check(source.hero_runtime.get_script() == load("res://src/combat/hero_runtime/hero_runtime.gd"), "heroes without dedicated mechanics should use the transparent base HeroRuntime")
 	source.global_position = Vector3(-2.0, 0.05, 0.0)
 	source.facing = Vector3.RIGHT
 	var target := CombatActor.new()

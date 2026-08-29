@@ -2,6 +2,7 @@ class_name CombatProjectile
 extends Area3D
 
 var source: CombatActor
+var entity_id := 0
 var ability: AbilityDefinition
 var direction := Vector3.FORWARD
 var attack_id := 0
@@ -34,7 +35,11 @@ func configure(p_source: CombatActor, p_ability: AbilityDefinition, p_direction:
 	shape_node.shape = shape
 	add_child(shape_node)
 	visual = MeshInstance3D.new()
-	if ability.vfx_id == "sword_wave":
+	var event_driven_projectile := get_tree().get_first_node_in_group("authority_event_presentation") != null
+	if event_driven_projectile:
+		visual.free()
+		visual = null
+	elif ability.vfx_id == "sword_wave":
 		var pillar_mesh := BoxMesh.new()
 		pillar_mesh.size = Vector3(0.16, 1.20, 0.12)
 		pillar_mesh.material = _projectile_material(Color(0.94, 0.99, 1.0, 0.96))
@@ -122,7 +127,8 @@ func configure(p_source: CombatActor, p_ability: AbilityDefinition, p_direction:
 		sphere.height = ability.projectile_radius * 2.0
 		sphere.material = _projectile_material(ability.color)
 		visual.mesh = sphere
-	add_child(visual)
+	if visual != null:
+		add_child(visual)
 	debug_mesh = MeshInstance3D.new()
 	var debug_sphere := SphereMesh.new()
 	debug_sphere.radius = ability.projectile_radius * 1.08
@@ -178,7 +184,7 @@ func _physics_process(delta: float) -> void:
 			if other.source != null and other.source.team != source.team:
 				other.queue_free()
 				continue
-		var target = area.get_meta("combat_actor", null)
+		var target = area.get_meta("combat_actor") if area.has_meta("combat_actor") else null
 		if target is CombatActor and _try_hit(target):
 			if not ability.projectile_pierces_actors:
 				queue_free()
@@ -266,6 +272,35 @@ func _spawn_grapple_impact(position: Vector3) -> void:
 func refresh_debug_visibility() -> void:
 	if debug_mesh != null:
 		debug_mesh.visible = CombatActor.debug_shapes
+
+
+func authoritative_snapshot() -> Dictionary:
+	return {
+		"entity_id": entity_id,
+		"entity_kind": "projectile",
+		"source_id": source.battle_id if source != null and is_instance_valid(source) else 0,
+		"ability_id": ability.ability_id if ability != null else "",
+		"vfx_id": ability.vfx_id if ability != null else "",
+		"attack_id": attack_id,
+		"position": _vector_snapshot(global_position),
+		"direction": _vector_snapshot(direction),
+		"remaining": _quantize(remaining),
+		"speed": _quantize(current_speed),
+		"radius": _quantize(ability.projectile_radius if ability != null else 0.0),
+		"color": _color_snapshot(ability.color if ability != null else Color.WHITE),
+	}
+
+
+func _vector_snapshot(value: Vector3) -> Array[int]:
+	return [_quantize(value.x), _quantize(value.y), _quantize(value.z)]
+
+
+func _quantize(value: float) -> int:
+	return roundi(value * 10000.0)
+
+
+func _color_snapshot(value: Color) -> Array[int]:
+	return [_quantize(value.r), _quantize(value.g), _quantize(value.b), _quantize(value.a)]
 
 
 func _projectile_material(color: Color) -> StandardMaterial3D:

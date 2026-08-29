@@ -1,13 +1,17 @@
 class_name BattleHUD
 extends CanvasLayer
 
+signal return_to_menu_requested
+
 const CooldownIconScript = preload("res://src/ui/ability_cooldown_icon.gd")
+const StaminaRingScript = preload("res://src/ui/stamina_ring.gd")
 
 var player: CombatActor
 var bot: CombatActor
 var player_hp: ProgressBar
 var player_status: ProgressBar
 var player_stamina: ProgressBar
+var player_stamina_ring: StaminaRing
 var bot_hp: ProgressBar
 var bot_status: ProgressBar
 var command_label: Label
@@ -16,12 +20,17 @@ var message_label: Label
 var targeting_label: Label
 var status_effect_label: Label
 var ability_icons: Dictionary = {}
+var respawn_mode_enabled := false
 
 
 func setup(p_player: CombatActor, p_bot: CombatActor) -> void:
 	player = p_player
 	bot = p_bot
 	_build_ui()
+
+
+func set_respawn_mode(enabled: bool) -> void:
+	respawn_mode_enabled = enabled
 
 
 func _build_ui() -> void:
@@ -33,6 +42,11 @@ func _build_ui() -> void:
 	player_status = _bar(root, Rect2(42.0, 50.0, 360.0, 10.0), player.definition.max_energy, player.definition.status_bar_color, Color("414d5a"), 1)
 	player_status.visible = player.definition.max_energy > 0.0 and not player.definition.status_bar_id.is_empty()
 	player_stamina = _bar(root, Rect2(42.0, 66.0, 270.0, 15.0), player.definition.max_stamina, Color("84dcf2"), Color("c9f3ff"), 2)
+	player_stamina_ring = StaminaRingScript.new() as StaminaRing
+	player_stamina_ring.position = Vector2(412.0, 14.0)
+	player_stamina_ring.size = Vector2(58.0, 58.0)
+	player_stamina_ring.setup(player)
+	root.add_child(player_stamina_ring)
 	bot_hp = _bar(root, Rect2(878.0, 24.0, 360.0, 22.0), bot.definition.max_hp, bot.relation_color(), Color("d8e5ec"), 2)
 	bot_status = _bar(root, Rect2(878.0, 50.0, 360.0, 10.0), bot.definition.max_energy, bot.definition.status_bar_color, Color("414d5a"), 1)
 	bot_status.visible = bot.definition.max_energy > 0.0 and not bot.definition.status_bar_id.is_empty()
@@ -69,7 +83,7 @@ func _build_ui() -> void:
 	menu_button.position = Vector2(1140.0, 640.0)
 	menu_button.size = Vector2(105.0, 36.0)
 	menu_button.mouse_filter = Control.MOUSE_FILTER_STOP
-	menu_button.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/launcher.tscn"))
+	menu_button.pressed.connect(return_to_menu_requested.emit)
 	root.add_child(menu_button)
 
 
@@ -118,14 +132,23 @@ func _process(_delta: float) -> void:
 	player_hp.value = player.hp
 	player_status.value = player.energy
 	player_stamina.value = player.stamina
-	bot_hp.value = bot.hp
-	bot_status.value = bot.energy
+	if bot != null and is_instance_valid(bot):
+		bot_hp.value = bot.hp
+		bot_status.value = bot.energy
+	else:
+		bot_hp.visible = false
+		bot_status.visible = false
 	command_label.text = "RMB 寻路 · LMB 攻击/确认 · QWER 技能 · SHIFT 翻滚 · SPACE 跳跃"
 	if player.definition.max_energy > 0.0 and not player.definition.status_bar_id.is_empty():
 		state_label.text = "体力 %.0f  ·  %s %.0f  ·  %s" % [player.stamina, player.definition.status_bar_label, player.energy, player.status_text()]
 	else:
 		state_label.text = "体力 %.0f  ·  %s" % [player.stamina, player.status_text()]
 	status_effect_label.text = "  ·  ".join(player.status_controller.summaries())
+	if respawn_mode_enabled:
+		if player.is_defeated:
+			message_label.text = "阵亡\n%.1f 秒后复活" % player.respawn_remaining
+		elif message_label.text.begins_with("阵亡"):
+			message_label.text = ""
 
 
 func set_targeting(ability_id: String) -> void:

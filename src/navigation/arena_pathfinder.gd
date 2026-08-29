@@ -2,19 +2,34 @@ class_name ArenaPathfinder
 extends RefCounted
 
 const CELL_SIZE := 0.25
-const MIN_X := -6.75
-const MIN_Z := -4.25
-const WIDTH := 55
-const HEIGHT := 35
 const CLEARANCE := 0.42
 
 var grid := AStarGrid2D.new()
+var navigation_bounds := Rect2(Vector2(-6.75, -4.25), Vector2(13.5, 8.5))
+var grid_width := 55
+var grid_height := 35
 
 
-func configure(obstacles: Array[Rect2]) -> void:
-	grid.region = Rect2i(0, 0, WIDTH, HEIGHT)
+func configure(bounds_or_obstacles: Variant, obstacles: Array[Rect2] = []) -> void:
+	# The one-argument form remains available to focused unit tests. Runtime
+	# scenes always pass their loaded map bounds explicitly.
+	if bounds_or_obstacles is Rect2:
+		navigation_bounds = bounds_or_obstacles as Rect2
+	else:
+		var test_map := BrawlMapCatalog.default_test_map()
+		if test_map != null:
+			navigation_bounds = test_map.playable_bounds(0.25)
+		obstacles.clear()
+		if bounds_or_obstacles is Array:
+			for obstacle_value in bounds_or_obstacles as Array:
+				if obstacle_value is Rect2:
+					obstacles.append(obstacle_value as Rect2)
+	grid_width = maxi(2, ceili(navigation_bounds.size.x / CELL_SIZE) + 1)
+	grid_height = maxi(2, ceili(navigation_bounds.size.y / CELL_SIZE) + 1)
+	grid = AStarGrid2D.new()
+	grid.region = Rect2i(0, 0, grid_width, grid_height)
 	grid.cell_size = Vector2(CELL_SIZE, CELL_SIZE)
-	grid.offset = Vector2(MIN_X, MIN_Z)
+	grid.offset = navigation_bounds.position
 	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
 	grid.default_compute_heuristic = AStarGrid2D.HEURISTIC_OCTILE
 	grid.default_estimate_heuristic = AStarGrid2D.HEURISTIC_OCTILE
@@ -34,7 +49,7 @@ func find_path(from: Vector3, to: Vector3) -> PackedVector3Array:
 		var point := grid.get_point_position(id)
 		result.append(Vector3(point.x, 0.0, point.y))
 	if not ids.is_empty() and not grid.is_point_solid(end_id):
-		result.append(Vector3(clampf(to.x, MIN_X, -MIN_X), 0.0, clampf(to.z, MIN_Z, -MIN_Z)))
+		result.append(Vector3(clampf(to.x, navigation_bounds.position.x, navigation_bounds.end.x), 0.0, clampf(to.z, navigation_bounds.position.y, navigation_bounds.end.y)))
 	return result
 
 
@@ -50,8 +65,8 @@ func _mark_obstacle(rect: Rect2) -> void:
 
 func _world_to_id(point: Vector3) -> Vector2i:
 	return Vector2i(
-		clampi(roundi((point.x - MIN_X) / CELL_SIZE), 0, WIDTH - 1),
-		clampi(roundi((point.z - MIN_Z) / CELL_SIZE), 0, HEIGHT - 1),
+		clampi(roundi((point.x - navigation_bounds.position.x) / CELL_SIZE), 0, grid_width - 1),
+		clampi(roundi((point.z - navigation_bounds.position.y) / CELL_SIZE), 0, grid_height - 1),
 	)
 
 

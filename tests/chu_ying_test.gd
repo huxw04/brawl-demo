@@ -18,7 +18,7 @@ func _run() -> void:
 	root.add_child(hero)
 	hero.setup(ChuYing.create(), 1, "褚赢", CombatActor.Relation.SELF)
 	hero.battle_id = 1
-	var target_definition := PlaceholderHero.create()
+	var target_definition := Nailoong.create()
 	target_definition.max_hp = 1000.0
 	target = CombatActor.new()
 	root.add_child(target)
@@ -27,6 +27,12 @@ func _run() -> void:
 	await _reset(Vector3.ZERO, Vector3(3.0, 0.0, 0.0))
 
 	_check("chu_ying" in HeroCatalog.IDS and HeroCatalog.display_name("chu_ying") == "褚赢", "Chu Ying should be selectable")
+	_check(hero.hero_runtime is ChuYingHeroRuntime, "Chu Ying should use the dedicated hero runtime")
+	var initial_runtime_snapshot := hero.hero_runtime_snapshot()
+	hero.chu_ying_q_charges = 0
+	hero.chu_ying_q_recharge_remaining = 1.0
+	hero.hero_runtime.apply_runtime_snapshot(initial_runtime_snapshot)
+	_check(hero.chu_ying_q_charges == 3 and is_zero_approx(hero.chu_ying_q_recharge_remaining), "Chu Ying charge state should round-trip through the runtime snapshot seam")
 	var texture := load("res://assets/heroes/chu_ying/sprites/chu_ying_idle_v1.png") as Texture2D
 	var image := texture.get_image()
 	_check(not image.is_empty() and image.get_pixel(0, 0).a < 0.05, "Chu Ying sprite should have a transparent corner")
@@ -112,6 +118,26 @@ func _run() -> void:
 		var planar := target.global_position - barrier.global_position
 		_check(absf(planar.x) < barrier.half_extents.x and absf(planar.z) < barrier.half_extents.y, "AI movement commands should remain clamped inside the rectangle")
 		_check(barrier.remaining > 12.5, "barrier should persist while AI repeatedly tries to leave")
+		move_runtime.stop_all()
+		var safe_position := barrier.global_position + Vector3(0.25, 0.0, 0.2)
+		safe_position.y = target.global_position.y
+		target.global_position = safe_position
+		await _frames(2)
+		target.global_position = Vector3(barrier.global_position.x + barrier.half_extents.x + 1.5, target.global_position.y, barrier.global_position.z)
+		target.velocity = Vector3(12.0, 0.0, 4.0)
+		target.knockback_velocity = Vector3(18.0, 0.0, 7.0)
+		await _frames(2)
+		var restored_planar := Vector2(target.global_position.x, target.global_position.z)
+		_check(restored_planar.distance_to(Vector2(safe_position.x, safe_position.z)) < 0.15, "an enemy knocked outside should return to its last valid interior position")
+		_check(Vector2(target.knockback_velocity.x, target.knockback_velocity.z).length() < 0.01, "barrier recovery should clear outward knockback so collision recovery cannot eject the target again")
+		target.reset_runtime(safe_position)
+		target.set_ability_target(Vector3(barrier.global_position.x + barrier.half_extents.x + 3.0, 0.0, barrier.global_position.z))
+		_check(target.try_ability("skill_e"), "a trapped Nailoong should still be allowed to attempt E")
+		await _frames(50)
+		var leap_planar := target.global_position - barrier.global_position
+		_check(absf(leap_planar.x) < barrier.half_extents.x and absf(leap_planar.z) < barrier.half_extents.y, "Nailoong E authority endpoint should remain inside Chu Ying's barrier")
+		var landing_waves := get_nodes_in_group("transient_combat_vfx").filter(func(node: Node) -> bool: return node.name == "NailoongLandingShockwave")
+		_check(not landing_waves.is_empty() and (landing_waves.back() as Node3D).global_position.distance_to(target.global_position) < 0.25, "Nailoong E landing effect should use the confined authoritative endpoint")
 		move_runtime.queue_free()
 		move_stream.queue_free()
 

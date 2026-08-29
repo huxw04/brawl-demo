@@ -74,14 +74,17 @@ func _fade_marker() -> void:
 	for part in marker_parts:
 		if is_instance_valid(part):
 			tween.tween_property(part, "transparency", 1.0, 0.16)
-	tween.chain().tween_callback(func() -> void:
-		if is_instance_valid(fading_marker):
-			fading_marker.queue_free()
-		if marker == fading_marker:
-			marker = null
-			marker_parts.clear()
-			marker_fading = false
-	)
+	tween.chain().tween_callback(_finish_marker_fade.bind(fading_marker.get_instance_id()))
+
+
+func _finish_marker_fade(fading_marker_id: int) -> void:
+	var fading_marker := instance_from_id(fading_marker_id) as Node3D
+	if is_instance_valid(fading_marker):
+		fading_marker.queue_free()
+	if marker != null and marker.get_instance_id() == fading_marker_id:
+		marker = null
+		marker_parts.clear()
+		marker_fading = false
 
 
 func _spawn_click_ripple(position: Vector3, color: Color) -> void:

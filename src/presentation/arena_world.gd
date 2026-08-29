@@ -6,25 +6,64 @@ var include_test_walls := true
 var show_measurement_marker := false
 var camera: Camera3D
 var navigation_obstacles: Array[Rect2] = []
+var map_definition: BrawlMapDefinition
+var follow_target: Node3D
+var camera_focus := Vector3.ZERO
+var camera_offset := Vector3.ZERO
+
+
+func configure(definition: BrawlMapDefinition, include_obstacles := true) -> void:
+	map_definition = definition
+	include_test_walls = include_obstacles
 
 
 func _ready() -> void:
+	if map_definition == null:
+		map_definition = BrawlMapCatalog.default_test_map()
+	if map_definition == null:
+		push_error("ArenaWorld cannot load its map definition.")
+		return
 	_build_environment()
 	_build_floor()
 	_build_boundaries()
 	if include_test_walls:
-		_build_test_walls()
+		_build_obstacles()
 	if show_measurement_marker:
 		_build_measurement_marker()
+
+
+func _process(delta: float) -> void:
+	if follow_target == null or not is_instance_valid(follow_target) or camera == null:
+		return
+	var target_position := map_definition.clamp_world_point(follow_target.global_position, 0.8)
+	target_position.y = map_definition.camera_look_at.y
+	var weight := 1.0 - exp(-8.0 * delta)
+	camera_focus = camera_focus.lerp(target_position, weight)
+	camera.position = camera_focus + camera_offset
+	camera.look_at(camera_focus, Vector3.UP)
+
+
+func set_camera_target(target: Node3D, snap := true) -> void:
+	follow_target = target
+	if target == null or camera == null:
+		return
+	var target_position := map_definition.clamp_world_point(target.global_position, 0.8)
+	target_position.y = map_definition.camera_look_at.y
+	if snap:
+		camera_focus = target_position
+		camera.position = camera_focus + camera_offset
+		camera.look_at(camera_focus, Vector3.UP)
 
 
 func _build_environment() -> void:
 	camera = Camera3D.new()
 	camera.name = "ArenaCamera"
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 11.5
-	camera.position = Vector3(0.0, 10.8, 11.8)
-	camera.look_at_from_position(camera.position, Vector3(0.0, 0.7, 0.0), Vector3.UP)
+	camera.size = map_definition.camera_size
+	camera.position = map_definition.camera_position
+	camera_focus = map_definition.camera_look_at
+	camera_offset = camera.position - camera_focus
+	camera.look_at_from_position(camera.position, camera_focus, Vector3.UP)
 	camera.current = true
 	add_child(camera)
 
@@ -46,29 +85,33 @@ func _build_environment() -> void:
 
 
 func _build_floor() -> void:
-	_add_static_box("Floor", Vector3(0.0, -0.12, 0.0), Vector3(14.0, 0.24, 9.0), Color("263546"), true)
+	_add_static_box("Floor", Vector3(0.0, -0.12, 0.0), Vector3(map_definition.size.x, 0.24, map_definition.size.y), map_definition.floor_color, true)
 	# Thin boxes form a world-space grid, so the camera projection is honest.
-	for x_index in range(-7, 8):
-		_add_visual_box(Vector3(float(x_index), 0.012, 0.0), Vector3(0.018, 0.014, 9.0), Color("3b4d60"))
-	for z_index in range(-4, 5):
-		_add_visual_box(Vector3(0.0, 0.014, float(z_index)), Vector3(14.0, 0.016, 0.018), Color("3b4d60"))
+	var half := map_definition.size * 0.5
+	for x_index in range(ceili(-half.x), floori(half.x) + 1):
+		_add_visual_box(Vector3(float(x_index), 0.012, 0.0), Vector3(0.018, 0.014, map_definition.size.y), map_definition.grid_color)
+	for z_index in range(ceili(-half.y), floori(half.y) + 1):
+		_add_visual_box(Vector3(0.0, 0.014, float(z_index)), Vector3(map_definition.size.x, 0.016, 0.018), map_definition.grid_color)
 
 
 func _build_boundaries() -> void:
-	var border_color := Color("526b80")
-	_add_static_box("NorthBoundary", Vector3(0.0, 0.35, -4.65), Vector3(14.5, 0.7, 0.3), border_color, true)
-	_add_static_box("SouthBoundary", Vector3(0.0, 0.35, 4.65), Vector3(14.5, 0.7, 0.3), border_color, true)
-	_add_static_box("WestBoundary", Vector3(-7.15, 0.35, 0.0), Vector3(0.3, 0.7, 9.0), border_color, true)
-	_add_static_box("EastBoundary", Vector3(7.15, 0.35, 0.0), Vector3(0.3, 0.7, 9.0), border_color, true)
+	var half := map_definition.size * 0.5
+	var border_color := map_definition.boundary_color
+	_add_static_box("NorthBoundary", Vector3(0.0, 0.35, -half.y - 0.15), Vector3(map_definition.size.x + 0.5, 0.7, 0.3), border_color, true)
+	_add_static_box("SouthBoundary", Vector3(0.0, 0.35, half.y + 0.15), Vector3(map_definition.size.x + 0.5, 0.7, 0.3), border_color, true)
+	_add_static_box("WestBoundary", Vector3(-half.x - 0.15, 0.35, 0.0), Vector3(0.3, 0.7, map_definition.size.y), border_color, true)
+	_add_static_box("EastBoundary", Vector3(half.x + 0.15, 0.35, 0.0), Vector3(0.3, 0.7, map_definition.size.y), border_color, true)
 
 
-func _build_test_walls() -> void:
-	_add_static_box("HighWall", Vector3(3.4, 1.35, -0.9), Vector3(0.42, 2.7, 3.0), Color("755b89"), true)
-	navigation_obstacles.append(Rect2(Vector2(3.4 - 0.21, -0.9 - 1.5), Vector2(0.42, 3.0)))
-	_add_wall_label("高墙 / HIGH WALL", Vector3(3.4, 2.95, -0.9))
-	_add_static_box("LowWall", Vector3(-1.1, 0.38, -2.45), Vector3(3.3, 0.76, 0.42), Color("9b754d"), true)
-	navigation_obstacles.append(Rect2(Vector2(-1.1 - 1.65, -2.45 - 0.21), Vector2(3.3, 0.42)))
-	_add_wall_label("矮墙 / LOW WALL", Vector3(-1.1, 1.02, -2.45))
+func _build_obstacles() -> void:
+	navigation_obstacles = map_definition.navigation_obstacles()
+	for obstacle in map_definition.obstacles:
+		var center := obstacle.get("center", Vector3.ZERO) as Vector3
+		var size := obstacle.get("size", Vector3.ZERO) as Vector3
+		_add_static_box(str(obstacle.get("id", "Obstacle")).to_pascal_case(), center, size, obstacle.get("color", Color("755b89")) as Color, true)
+		var label := str(obstacle.get("label", ""))
+		if not label.is_empty():
+			_add_wall_label(label, center + Vector3.UP * (size.y * 0.5 + 0.25))
 
 
 func _add_static_box(node_name: String, center: Vector3, size: Vector3, color: Color, casts_shadow: bool) -> StaticBody3D:
@@ -117,7 +160,8 @@ func _add_wall_label(text: String, at_position: Vector3) -> void:
 
 
 func _build_measurement_marker() -> void:
-	var origin := Vector3(-5.85, 0.038, 3.65)
+	var bounds := map_definition.playable_bounds(0.8)
+	var origin := Vector3(bounds.position.x + 0.35, 0.038, bounds.end.y - 0.35)
 	_add_visual_box(origin + Vector3(0.5, 0.0, 0.0), Vector3(1.0, 0.022, 0.045), Color("8ceaff"))
 	_add_visual_box(origin, Vector3(0.045, 0.032, 0.28), Color("d8f8ff"))
 	_add_visual_box(origin + Vector3.RIGHT, Vector3(0.045, 0.032, 0.28), Color("d8f8ff"))
@@ -140,13 +184,13 @@ func _material(color: Color) -> StandardMaterial3D:
 
 
 func screen_to_ground(screen_position: Vector2) -> Vector3:
+	if camera == null or map_definition == null:
+		return Vector3.ZERO
 	var origin := camera.project_ray_origin(screen_position)
 	var direction := camera.project_ray_normal(screen_position)
 	if absf(direction.y) < 0.0001:
 		return Vector3.ZERO
 	var distance := -origin.y / direction.y
 	var point := origin + direction * distance
-	point.x = clampf(point.x, -6.7, 6.7)
 	point.y = 0.0
-	point.z = clampf(point.z, -4.2, 4.2)
-	return point
+	return map_definition.clamp_world_point(point, 0.3)

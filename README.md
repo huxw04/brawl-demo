@@ -21,6 +21,19 @@ Validate all project scripts without opening a window:
 powershell -ExecutionPolicy Bypass -File scripts/check.ps1
 ```
 
+Start two local windows for the LAN test. Create a room in one
+window and join `127.0.0.1` in the other:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/run_local_multiplayer.ps1
+```
+
+The launcher also accepts a host's LAN IPv4 address for testing on two PCs.
+The LAN prototype currently provides the Stage A/B room, loading and
+host-authoritative movement baseline. Stage C combat replication is being
+restructured around authoritative events and read-only client replicas; the
+current combat-sync prototype should be treated as development-only.
+
 Create the Windows x86-64 classroom playtest package after installing the
 matching Godot 4.7.2 export templates:
 
@@ -29,7 +42,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1
 ```
 
 The distributable ZIP is written to
-`dist/BrawlDemo-v0.1-windows-x86_64.zip`. The generated `dist/` directory and
+`dist/BrawlDemo-v0.4.2-windows-x86_64.zip`. The generated `dist/` directory and
 local export templates are intentionally excluded from Git.
 
 The launcher opens two shared-logic scenes:
@@ -45,5 +58,11 @@ launcher, `F3` toggles collision debug drawing, and `F5` restarts a battle.
 
 See [`docs/framework_design.md`](docs/framework_design.md) for architecture and
 [`docs/adding_a_hero.md`](docs/adding_a_hero.md) for the character workflow.
+Data-driven map files and their import contract are documented in
+[`docs/map_data_design.md`](docs/map_data_design.md).
+The host-authoritative LAN implementation, protocol boundaries, respawn rules,
+five-minute/ten-kill match rules, synchronized K/D/A scoreboard,
+and staged acceptance criteria are recorded in
+[`docs/multiplayer_design.md`](docs/multiplayer_design.md).
 The first playable batch contains Cheems, Sword-and-shield Dog, Bear Grylls,
 Nailoong, and Chu Ying. Individual designs live in `docs/heroes/`.

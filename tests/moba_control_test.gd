@@ -51,6 +51,13 @@ func _run() -> void:
 	q_key.pressed = true
 	battle.player_controller._unhandled_input(q_key)
 	_check(battle.player_controller.pending_ability == "skill_q", "Q should arm the Q ability")
+	var history_before_q_release: int = battle.command_stream.history.size()
+	var q_release := InputEventKey.new()
+	q_release.keycode = KEY_Q
+	q_release.pressed = false
+	battle.player_controller._unhandled_input(q_release)
+	await _physics_frames(2)
+	_check(battle.command_stream.history.size() == history_before_q_release, "releasing an aimed skill key must not submit a stray END_ABILITY command")
 	await _physics_frames(2)
 	_check(battle.targeting_preview.shown_ability_id == "skill_q" and battle.targeting_preview.preview_mesh.get_surface_count() > 0, "armed directional ability should display world-space targeting geometry")
 	_check(battle.targeting_preview.fill_material.albedo_color.a <= 0.05 and battle.targeting_preview.edge_material.albedo_color.a <= 0.25, "thicker targeting geometry should remain visually subtle through low overall opacity")
@@ -62,6 +69,13 @@ func _run() -> void:
 	battle.player_controller._unhandled_input(cast_click)
 	await _physics_frames(2)
 	_check(float(player.cooldowns.get("skill_q", 0.0)) > 0.0, "left click should confirm the armed directional ability")
+
+	player.reset_runtime(player.global_position)
+	player.cooldowns["skill_q"] = 3.0
+	battle.player_controller._unhandled_input(q_key)
+	await _physics_frames(2)
+	_check(battle.player_controller.pending_ability.is_empty(), "an ability on cooldown should not arm mouse targeting")
+	_check(battle.targeting_preview.shown_ability_id.is_empty() and battle.targeting_preview.preview_mesh.get_surface_count() == 0, "cooldown rejection should leave no targeting geometry behind")
 
 	player.reset_runtime(player.global_position)
 	player.energy = player.definition.max_energy

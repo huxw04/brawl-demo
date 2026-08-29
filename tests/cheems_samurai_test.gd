@@ -15,6 +15,12 @@ func _run() -> void:
 	root.add_child(hero)
 	hero.setup(CheemsSamurai.create(), 1, "cheems", CombatActor.Relation.SELF)
 	hero.battle_id = 1
+	_check(hero.hero_runtime is CheemsHeroRuntime, "Cheems should use the dedicated authoritative HeroRuntime")
+	var initial_runtime := hero.hero_runtime.runtime_snapshot()
+	hero.basic_combo_step = 2
+	hero.weapon_drawn = true
+	hero.hero_runtime.apply_runtime_snapshot(initial_runtime)
+	_check(hero.basic_combo_step == 0 and not hero.weapon_drawn, "Cheems runtime snapshot should restore combo and weapon state")
 	hero.global_position = Vector3(-2.0, 0.05, 0.0)
 	var target := CombatActor.new()
 	root.add_child(target)
@@ -44,7 +50,7 @@ func _run() -> void:
 	_check(is_zero_approx(hero.definition.ability_by_id("skill_w").knockback) and is_zero_approx(hero.definition.ability_by_id("skill_e").knockback), "Cheems W and E should not knock back")
 	var ultimate_definition := hero.definition.ability_by_id("ultimate")
 	_check(is_equal_approx(ultimate_definition.hitbox_radius, 2.0), "ultimate radius should be 200 yards / two world units")
-	_check(is_equal_approx(CombatActor.ACTION_SWORD_BODY_INSET, 0.30), "W, E, and R sword poses should share a 30-yard body inset")
+	_check(is_equal_approx(ActorPresentation.ACTION_SWORD_BODY_INSET, 0.30), "W, E, and R sword poses should share a 30-yard body inset")
 	hero.facing = Vector3.LEFT
 	_check(hero.auto_face_nearest(2.35), "basic auto-target should acquire in a full circle")
 	_check(hero.facing.x > 0.9, "auto-target should turn toward the acquired target")

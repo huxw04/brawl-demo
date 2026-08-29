@@ -2,10 +2,12 @@ class_name ChuYingBarrier
 extends Node3D
 
 var source: CombatActor
+var entity_id := 0
 var unit_id := 0
 var half_extents := Vector2.ONE
 var remaining := 15.0
 var trapped: Array[CombatActor] = []
+var last_contained_positions: Dictionary = {}
 
 
 func configure(p_source: CombatActor, center: Vector3, p_half_extents: Vector2, p_unit_id: int) -> void:
@@ -16,6 +18,7 @@ func configure(p_source: CombatActor, center: Vector3, p_half_extents: Vector2, 
 	# Enforce after actors, command motors, AI and knockback have updated this tick.
 	process_physics_priority = 1000
 	add_to_group("deterministic_combat_units")
+	add_to_group("movement_confinements")
 	add_to_group("transient_combat_vfx")
 	for value in get_tree().get_nodes_in_group("combat_actors"):
 		if value is CombatActor:
@@ -23,7 +26,13 @@ func configure(p_source: CombatActor, center: Vector3, p_half_extents: Vector2, 
 			var offset := actor.global_position - global_position
 			if actor != source and actor.team != source.team and not actor.is_defeated and absf(offset.x) <= half_extents.x and absf(offset.z) <= half_extents.y:
 				trapped.append(actor)
-	_create_visual()
+				var body_margin := actor.definition.body_radius * 0.55
+				last_contained_positions[actor.battle_id] = Vector2(
+					clampf(actor.global_position.x, global_position.x - half_extents.x + body_margin, global_position.x + half_extents.x - body_margin),
+					clampf(actor.global_position.z, global_position.z - half_extents.y + body_margin, global_position.z + half_extents.y - body_margin)
+				)
+	if get_tree().get_first_node_in_group("authority_event_presentation") == null:
+		_create_visual()
 
 
 func _physics_process(delta: float) -> void:
@@ -45,18 +54,43 @@ func _constrain_actor(actor: CombatActor) -> void:
 	var local_z := actor.global_position.z - global_position.z
 	var clamped_x := clampf(local_x, -allowed_x, allowed_x)
 	var clamped_z := clampf(local_z, -allowed_z, allowed_z)
-	if not is_equal_approx(local_x, clamped_x):
-		actor.global_position.x = global_position.x + clamped_x
-		if signf(actor.velocity.x) == signf(local_x):
-			actor.velocity.x = 0.0
-		if signf(actor.knockback_velocity.x) == signf(local_x):
-			actor.knockback_velocity.x = 0.0
-	if not is_equal_approx(local_z, clamped_z):
-		actor.global_position.z = global_position.z + clamped_z
-		if signf(actor.velocity.z) == signf(local_z):
-			actor.velocity.z = 0.0
-		if signf(actor.knockback_velocity.z) == signf(local_z):
-			actor.knockback_velocity.z = 0.0
+	var outside := not is_equal_approx(local_x, clamped_x) or not is_equal_approx(local_z, clamped_z)
+	if not outside:
+		last_contained_positions[actor.battle_id] = Vector2(actor.global_position.x, actor.global_position.z)
+		return
+	# Returning to the last valid interior point is robust when an arena wall
+	# overlaps the visual boundary. Clamping directly onto that wall allowed the
+	# next CharacterBody collision recovery to push the actor outside again.
+	var fallback: Vector2 = last_contained_positions.get(
+		actor.battle_id,
+		Vector2(global_position.x + clamped_x, global_position.z + clamped_z),
+	)
+	actor.global_position.x = clampf(fallback.x, global_position.x - allowed_x, global_position.x + allowed_x)
+	actor.global_position.z = clampf(fallback.y, global_position.z - allowed_z, global_position.z + allowed_z)
+	actor.velocity.x = 0.0
+	actor.velocity.z = 0.0
+	actor.knockback_velocity.x = 0.0
+	actor.knockback_velocity.z = 0.0
+
+
+func confined_destination(actor: CombatActor, preferred: Vector3) -> Vector3:
+	if actor == null or not trapped.has(actor):
+		return preferred
+	var body_margin := actor.definition.body_radius * 0.55
+	var allowed_x := maxf(0.05, half_extents.x - body_margin)
+	var allowed_z := maxf(0.05, half_extents.y - body_margin)
+	var local_x := preferred.x - global_position.x
+	var local_z := preferred.z - global_position.z
+	if absf(local_x) <= allowed_x and absf(local_z) <= allowed_z:
+		return preferred
+	var last_valid: Vector2 = last_contained_positions.get(
+		actor.battle_id,
+		Vector2(
+			global_position.x + clampf(local_x, -allowed_x, allowed_x),
+			global_position.z + clampf(local_z, -allowed_z, allowed_z),
+		),
+	)
+	return Vector3(last_valid.x, preferred.y, last_valid.y)
 
 
 func _create_visual() -> void:
@@ -125,6 +159,13 @@ func combat_snapshot() -> Dictionary:
 		if actor != null and is_instance_valid(actor):
 			ids.append(actor.battle_id)
 	ids.sort()
+	var contained_positions: Dictionary = {}
+	var contained_actor_ids: Array = last_contained_positions.keys()
+	contained_actor_ids.sort()
+	for actor_id_value in contained_actor_ids:
+		var actor_id := int(actor_id_value)
+		var position: Vector2 = last_contained_positions[actor_id]
+		contained_positions[str(actor_id)] = [roundi(position.x * 10000.0), roundi(position.y * 10000.0)]
 	return {
 		"id": unit_id,
 		"type": "chu_ying_barrier",
@@ -132,7 +173,19 @@ func combat_snapshot() -> Dictionary:
 		"half_extents": [roundi(half_extents.x * 10000.0), roundi(half_extents.y * 10000.0)],
 		"remaining": roundi(remaining * 10000.0),
 		"trapped": ids,
+		"last_contained_positions": contained_positions,
 	}
+
+
+func authoritative_snapshot() -> Dictionary:
+	var snapshot := combat_snapshot()
+	snapshot["entity_id"] = entity_id
+	snapshot["entity_kind"] = "chu_ying_barrier"
+	snapshot["attack_id"] = unit_id
+	snapshot["source_id"] = source.battle_id if source != null and is_instance_valid(source) else 0
+	snapshot["ability_id"] = "ultimate"
+	snapshot["vfx_id"] = "chu_ying_barrier"
+	return snapshot
 
 
 func _material(color: Color) -> StandardMaterial3D:
