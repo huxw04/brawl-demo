@@ -6,6 +6,7 @@ signal action_started(actor: CombatActor, action_id: String)
 signal action_finished(actor: CombatActor, action_id: String)
 signal damaged(actor: CombatActor, amount: float)
 signal damage_received(actor: CombatActor, source_actor_id: int, amount: float)
+signal healing_received(actor: CombatActor, source_actor_id: int, amount: float)
 signal defeated(actor: CombatActor)
 
 const AttackHitboxScript = preload("res://src/combat/attack_hitbox.gd")
@@ -526,7 +527,9 @@ func receive_hit(source: CombatActor, ability: AbilityDefinition, direction: Vec
 	var hp_before := hp
 	hp = maxf(0.0, hp - dealt_damage)
 	var actual_damage := hp_before - hp
-	energy = minf(definition.max_energy, energy + dealt_damage * 0.38)
+	# Resource gain is based on health actually lost. Overkill and mitigation
+	# must not create extra energy that never corresponded to real damage.
+	energy = minf(definition.max_energy, energy + actual_damage * 0.38)
 	var has_armor := status_controller.has_tag("control_immune")
 	if not has_armor:
 		knockback_velocity = Vector3(direction.x, 0.0, direction.z).normalized() * ability.knockback
@@ -538,7 +541,9 @@ func receive_hit(source: CombatActor, ability: AbilityDefinition, direction: Vec
 	if not has_armor and not (current_ability != null and current_ability.uninterruptible_by_damage):
 		_cancel_current_ability()
 	damaged.emit(self, dealt_damage)
-	damage_received.emit(self, source.battle_id if source != null else 0, actual_damage)
+	var source_actor_id := source.battle_id if source != null else 0
+	damage_received.emit(self, source_actor_id, actual_damage)
+	_emit_combat_feedback("damage", source_actor_id, battle_id, actual_damage)
 	resource_changed.emit(self)
 	if hp <= 0.0:
 		_mark_defeated()
@@ -893,9 +898,7 @@ func _damage_box_at(center: Vector3, half_extents: Vector2, ability: AbilityDefi
 func on_ability_hit(ability: AbilityDefinition, dealt_damage := 0.0) -> void:
 	gain_energy(ability.energy_on_hit)
 	var healing := ability.healing_on_hit + dealt_damage * ability.lifesteal_ratio
-	if healing > 0.0 and not is_defeated:
-		hp = minf(definition.max_hp, hp + healing)
-		resource_changed.emit(self)
+	heal(healing, battle_id)
 	if ability.refresh_cooldown_on_hit:
 		cooldowns[ability.ability_id] = 0.0
 
@@ -906,6 +909,20 @@ func modify_outgoing_damage(target: CombatActor, ability: AbilityDefinition, bas
 
 func on_killed_actor(_target: CombatActor, ability: AbilityDefinition) -> void:
 	hero_runtime.on_killed_actor(_target, ability)
+
+
+func heal(amount: float, source_actor_id := 0) -> float:
+	if amount <= 0.0 or is_defeated:
+		return 0.0
+	var hp_before := hp
+	hp = minf(definition.max_hp, hp + amount)
+	var actual_healing := hp - hp_before
+	if actual_healing <= 0.0:
+		return 0.0
+	healing_received.emit(self, source_actor_id, actual_healing)
+	resource_changed.emit(self)
+	_emit_combat_feedback("heal", source_actor_id, battle_id, actual_healing)
+	return actual_healing
 
 
 func on_hitbox_pulse(ability: AbilityDefinition, pulse_index: int) -> void:
@@ -951,9 +968,24 @@ func _on_periodic_damage(amount: float, source_actor_id: int, _effect_id: String
 	flash_remaining = 0.13
 	damaged.emit(self, amount)
 	damage_received.emit(self, source_actor_id, actual_damage)
+	_emit_combat_feedback("damage", source_actor_id, battle_id, actual_damage)
 	resource_changed.emit(self)
 	if hp <= 0.0:
 		_mark_defeated()
+
+
+func _emit_combat_feedback(kind: String, source_actor_id: int, target_actor_id: int, amount: float) -> void:
+	if amount <= 0.0:
+		return
+	var authority := match_authority()
+	if authority == null:
+		return
+	authority.emit_authoritative_event(AuthoritativeEvent.COMBAT_FEEDBACK, target_actor_id, {
+		"kind": kind,
+		"source_actor_id": source_actor_id,
+		"target_actor_id": target_actor_id,
+		"amount": amount,
+	})
 
 
 func _mark_defeated() -> void:

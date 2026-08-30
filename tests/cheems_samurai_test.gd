@@ -104,10 +104,12 @@ func _run() -> void:
 	hero.reset_runtime(Vector3(-2.0, 0.05, 0.0))
 	target.reset_runtime(Vector3(-0.6, 0.05, 0.0))
 	await _physics_frames(5)
+	hero.energy = 0.0
 	_check(hero.try_ability("basic", true), "sheathed basic should start")
 	_check(hero.weapon_drawn and hero.basic_combo_step == 0, "first basic should draw the weapon and use combo step one")
 	_check(is_equal_approx(hero.current_attack_damage_multiplier, 1.5), "draw slash should snapshot a 1.5 damage multiplier")
 	await _physics_frames(30)
+	_check(is_equal_approx(hero.energy, 5.0), "a successful basic should grant five sword-intent energy")
 	_check(hero.try_ability("basic", true), "second chained basic should start before sheathing")
 	_check(hero.basic_combo_step == 1 and is_equal_approx(hero.current_attack_damage_multiplier, 1.0), "second basic should be the upward slash at normal damage")
 	await _physics_frames(52)
@@ -117,9 +119,11 @@ func _run() -> void:
 	await _physics_frames(5)
 
 	hero.hp = hero.definition.max_hp - 20.0
+	hero.energy = 0.0
 	_check(hero.try_ability("skill_w", true), "multi-slash should start")
 	await _physics_frames(20)
 	_check(hero.hp >= hero.definition.max_hp - 15.0, "each successful multi-slash pulse should heal five HP")
+	_check(hero.energy >= 4.0, "each successful multi-slash pulse should grant sword-intent energy")
 	hero.set_move_intent(Vector2.RIGHT)
 	await _physics_frames(2)
 	_check(hero.current_ability == null, "movement should cancel multi-slash")
@@ -127,9 +131,11 @@ func _run() -> void:
 
 	hero.facing = Vector3.RIGHT
 	var hp_before := target.hp
+	var energy_before := hero.energy
 	_check(hero.try_ability("skill_e", true), "dash should start")
 	await _physics_frames(16)
 	_check(target.hp < hp_before, "dash path hitbox should damage the target")
+	_check(hero.energy >= energy_before + 8.0, "a successful dash hit should grant eight sword-intent energy")
 	_check(is_zero_approx(float(hero.cooldowns.get("skill_e", -1.0))), "dash hit should refresh its cooldown")
 
 	var stun := CombatStatuses.stunned(1.0)
@@ -139,6 +145,10 @@ func _run() -> void:
 	hero.apply_status(CombatStatuses.slow(1.0, 0.5), target.battle_id)
 	_check(hero.status_controller.has_visual("slow"), "slow should expose a non-text visual tag")
 
+	hero.reset_runtime(Vector3(-2.0, 0.05, 0.0))
+	hero.hp = 20.0
+	_check(hero.receive_hit(target, target.definition.ability_by_id("basic"), Vector3.LEFT, 9000, 999.0), "overkill energy test hit should be accepted")
+	_check(is_equal_approx(hero.energy, 7.6), "damage-taken sword intent should use actual health lost rather than overkill damage")
 	hero.reset_runtime(Vector3(-2.0, 0.05, 0.0))
 	var lethal_basic := target.definition.ability_by_id("basic")
 	_check(hero.receive_hit(target, lethal_basic, Vector3.LEFT, 9001, hero.definition.max_hp + 1.0), "lethal damage should be accepted")

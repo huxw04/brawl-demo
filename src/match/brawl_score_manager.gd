@@ -39,6 +39,8 @@ func register_actor(actor: CombatActor) -> void:
 		stats_by_actor[actor.battle_id] = _new_stat(actor)
 	if not actor.damage_received.is_connected(_on_damage_received):
 		actor.damage_received.connect(_on_damage_received)
+	if not actor.healing_received.is_connected(_on_healing_received):
+		actor.healing_received.connect(_on_healing_received)
 	if not actor.defeated.is_connected(_on_actor_defeated):
 		actor.defeated.connect(_on_actor_defeated)
 
@@ -48,6 +50,8 @@ func unregister_actor(actor_id: int) -> void:
 	if actor != null and is_instance_valid(actor):
 		if actor.damage_received.is_connected(_on_damage_received):
 			actor.damage_received.disconnect(_on_damage_received)
+		if actor.healing_received.is_connected(_on_healing_received):
+			actor.healing_received.disconnect(_on_healing_received)
 		if actor.defeated.is_connected(_on_actor_defeated):
 			actor.defeated.disconnect(_on_actor_defeated)
 	actors_by_id.erase(actor_id)
@@ -99,6 +103,13 @@ func _on_damage_received(target: CombatActor, source_actor_id: int, amount: floa
 	contributors[source_actor_id] = match_duration - remaining_time
 	recent_contributors[target.battle_id] = contributors
 	last_damage_source[target.battle_id] = source_actor_id
+
+
+func _on_healing_received(_target: CombatActor, source_actor_id: int, amount: float) -> void:
+	if not running or ended or amount <= 0.0 or not stats_by_actor.has(source_actor_id):
+		return
+	var source_stat := stats_by_actor[source_actor_id] as Dictionary
+	source_stat["healing"] = float(source_stat.get("healing", 0.0)) + amount
 
 
 func _on_actor_defeated(victim: CombatActor) -> void:
@@ -175,7 +186,7 @@ func _streak_phrase(streak: int) -> String:
 		1:
 			return "卧龙出山"
 		2:
-			return "举世成名"
+			return "一战成名"
 		3:
 			return "举世皆惊"
 		4:
@@ -256,6 +267,7 @@ func _new_stat(actor: CombatActor, fallback: Dictionary = {}) -> Dictionary:
 		"streak": 0,
 		"damage_dealt": 0.0,
 		"damage_taken": 0.0,
+		"healing": 0.0,
 	}
 
 

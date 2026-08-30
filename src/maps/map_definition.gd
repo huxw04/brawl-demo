@@ -99,6 +99,10 @@ func _validate() -> bool:
 		if minimum.x < -size.x * 0.5 or minimum.y < -size.y * 0.5 or maximum.x > size.x * 0.5 or maximum.y > size.y * 0.5:
 			return false
 		ids[obstacle_id] = true
+	for spawn in spawn_points:
+		var point := spawn.get("position", Vector3.ZERO) as Vector3
+		if not is_open_world_point(point, 0.45):
+			return false
 	return true
 
 
@@ -121,6 +125,16 @@ func spawn_position(index: int) -> Vector3:
 	if spawn_points.is_empty():
 		return Vector3.ZERO
 	return spawn_points[posmod(index, spawn_points.size())].get("position", Vector3.ZERO) as Vector3
+
+
+func is_open_world_point(point: Vector3, clearance := 0.0) -> bool:
+	if not playable_bounds(clearance).has_point(Vector2(point.x, point.z)):
+		return false
+	var point_2d := Vector2(point.x, point.z)
+	for obstacle in navigation_obstacles():
+		if obstacle.grow(clearance).has_point(point_2d):
+			return false
+	return true
 
 
 func navigation_obstacles() -> Array[Rect2]:

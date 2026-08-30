@@ -6,6 +6,7 @@ const ENTITY_DESTROYED := &"entity_destroyed"
 const WORLD_EFFECT := &"world_effect"
 const HERO_EFFECT := &"hero_effect"
 const MATCH_RULE := &"match_rule"
+const COMBAT_FEEDBACK := &"combat_feedback"
 
 var event_id := 0
 var authority_tick := 0

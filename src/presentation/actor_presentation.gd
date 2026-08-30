@@ -495,8 +495,9 @@ func _update_visibility_and_status(delta: float) -> void:
 	var overhead := "复活保护" if actor.spawn_protection_remaining > 0.0 else actor.status_controller.overhead_text()
 	name_label.text = overhead if not overhead.is_empty() else actor.actor_name
 	name_label.modulate = Color("ffe29a") if not overhead.is_empty() else Color("e8f4fb")
-	var filled := clampi(ceili((actor.hp / actor.definition.max_hp) * 12.0), 0, 12)
-	hp_label.text = "▰".repeat(filled) + "▱".repeat(12 - filled)
+	var hp_segments := maxi(1, ceili(actor.definition.max_hp / 10.0))
+	var filled := clampi(ceili(actor.hp / 10.0), 0, hp_segments)
+	hp_label.text = "▰".repeat(filled) + "▱".repeat(hp_segments - filled)
 	var has_status_resource := actor.definition.max_energy > 0.0 and not actor.definition.status_bar_id.is_empty()
 	if has_status_resource:
 		var energy_filled := clampi(ceili((actor.energy / actor.definition.max_energy) * 12.0), 0, 12)

@@ -7,7 +7,7 @@ static func create() -> HeroDefinition:
 	hero.hero_id = "cheems_samurai"
 	hero.display_name = "cheems"
 	hero.theme_color = Color("d9a552")
-	hero.max_hp = 145.0
+	hero.max_hp = 140.0
 	hero.move_speed = 3.65
 	hero.max_energy = 100.0
 	hero.status_bar_label = "剑意"
@@ -22,7 +22,7 @@ static func create() -> HeroDefinition:
 
 	var basic := AbilityDefinition.new()
 	basic.ability_id = "basic"
-	basic.display_name = "半月横斩"
+	basic.display_name = "居合"
 	basic.startup = 0.12
 	basic.active = 0.10
 	basic.recovery = 0.22
@@ -63,7 +63,7 @@ static func create() -> HeroDefinition:
 
 	var w := AbilityDefinition.new()
 	w.ability_id = "skill_w"
-	w.display_name = "八重连斩"
+	w.display_name = "连斩"
 	w.startup = 0.16
 	w.active = 2.4
 	w.recovery = 0.18
@@ -75,7 +75,7 @@ static func create() -> HeroDefinition:
 	w.hitbox_center_y = 0.67
 	w.hit_interval = 0.3
 	w.max_hits_per_target = 8
-	w.energy_on_hit = 0.0
+	w.energy_on_hit = 4.0
 	w.healing_on_hit = 5.0
 	w.cancelable_by_movement = true
 	w.cancelable_by_ability = true
@@ -109,7 +109,7 @@ static func create() -> HeroDefinition:
 
 	var r := AbilityDefinition.new()
 	r.ability_id = "ultimate"
-	r.display_name = "次元收刀"
+	r.display_name = "次元斩"
 	r.startup = 0.5
 	r.active = 2.0
 	r.recovery = 0.24

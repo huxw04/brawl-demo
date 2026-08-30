@@ -29,10 +29,11 @@ powershell -ExecutionPolicy Bypass -File scripts/run_local_multiplayer.ps1
 ```
 
 The launcher also accepts a host's LAN IPv4 address for testing on two PCs.
-The LAN prototype currently provides the Stage A/B room, loading and
-host-authoritative movement baseline. Stage C combat replication is being
-restructured around authoritative events and read-only client replicas; the
-current combat-sync prototype should be treated as development-only.
+The LAN prototype now provides a host-authoritative free-for-all match with
+read-only client replicas, synchronized hero/world effects, respawns, scoring
+and results. The host can select one of three data-driven combat maps. Two-player
+LAN playtests and a four-process capacity check are complete; three- and
+four-player human playtests remain in the v1 finishing pass.
 
 Create the Windows x86-64 classroom playtest package after installing the
 matching Godot 4.7.2 export templates:
@@ -42,7 +43,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package_windows.ps1
 ```
 
 The distributable ZIP is written to
-`dist/BrawlDemo-v0.4.3-windows-x86_64.zip`. The generated `dist/` directory and
+`dist/BrawlDemo-v0.4.6-windows-x86_64.zip`. The generated `dist/` directory and
 local export templates are intentionally excluded from Git.
 
 The launcher opens two shared-logic scenes:

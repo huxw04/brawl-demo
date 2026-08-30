@@ -28,8 +28,11 @@ func _run() -> void:
 	click.button_index = MOUSE_BUTTON_RIGHT
 	click.pressed = true
 	click.position = battle.arena.camera.unproject_position(destination)
+	var requested_destinations: Array[Vector3] = []
+	battle.player_controller.movement_requested.connect(func(value: Vector3) -> void: requested_destinations.append(value))
 	battle.player_controller._unhandled_input(click)
 	await _physics_frames(2)
+	_check(requested_destinations.size() == 1 and requested_destinations[0].distance_to(destination) < 0.05, "right click should publish immediate local destination feedback independently of authority execution")
 	_check(battle.move_indicator.marker != null, "right click should create a persistent resolved destination marker")
 	if battle.move_indicator.marker != null:
 		var marker_position: Vector3 = battle.move_indicator.marker.global_position

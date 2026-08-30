@@ -1,0 +1,36 @@
+{
+  "format_version": 1,
+  "map_id": "wind_gorge_01",
+  "map_version": 1,
+  "display_name": "回风峡谷",
+  "size": [32.0, 24.0],
+  "floor_color": "203944",
+  "grid_color": "31525d",
+  "boundary_color": "4e7881",
+  "camera": {
+    "orthographic_size": 11.5,
+    "position": [0.0, 10.8, 11.8],
+    "look_at": [0.0, 0.7, 0.0]
+  },
+  "spawn_points": [
+    {"id": "west_upper", "position": [-13.5, 0.05, -7.5]},
+    {"id": "east_lower", "position": [13.5, 0.05, 7.5]},
+    {"id": "east_upper", "position": [13.5, 0.05, -7.5]},
+    {"id": "west_lower", "position": [-13.5, 0.05, 7.5]},
+    {"id": "north_west", "position": [-7.0, 0.05, -10.0]},
+    {"id": "north_east", "position": [7.0, 0.05, -10.0]},
+    {"id": "south_east", "position": [7.0, 0.05, 10.0]},
+    {"id": "south_west", "position": [-7.0, 0.05, 10.0]},
+    {"id": "west_mid", "position": [-14.0, 0.05, 0.0]},
+    {"id": "east_mid", "position": [14.0, 0.05, 0.0]}
+  ],
+  "obstacles": [
+    {"id": "central_ridge", "kind": "box", "center": [0.0, 1.45, 0.0], "size": [9.0, 2.9, 2.4], "color": "607d83", "label": ""},
+    {"id": "north_west_hook", "kind": "box", "center": [-8.5, 0.75, -5.0], "size": [4.5, 1.5, 0.65], "color": "72939a", "label": ""},
+    {"id": "north_east_hook", "kind": "box", "center": [9.0, 0.75, -4.0], "size": [0.65, 1.5, 4.8], "color": "72939a", "label": ""},
+    {"id": "south_east_hook", "kind": "box", "center": [8.5, 0.75, 5.0], "size": [4.5, 1.5, 0.65], "color": "72939a", "label": ""},
+    {"id": "south_west_hook", "kind": "box", "center": [-9.0, 0.75, 4.0], "size": [0.65, 1.5, 4.8], "color": "72939a", "label": ""},
+    {"id": "north_gate", "kind": "box", "center": [0.0, 0.42, -8.0], "size": [3.5, 0.84, 0.55], "color": "9a875b", "label": ""},
+    {"id": "south_gate", "kind": "box", "center": [0.0, 0.42, 8.0], "size": [3.5, 0.84, 0.55], "color": "9a875b", "label": ""}
+  ]
+}

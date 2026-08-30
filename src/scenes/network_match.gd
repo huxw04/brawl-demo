@@ -14,6 +14,7 @@ const ScoreManagerScript = preload("res://src/match/brawl_score_manager.gd")
 const ScoreboardScript = preload("res://src/ui/brawl_scoreboard.gd")
 
 const SNAPSHOT_INTERVAL := 1.0 / 12.0
+const MATCH_STATE_INTERVAL := 1.0
 
 var arena: ArenaWorld
 var actors_by_peer: Dictionary = {}
@@ -33,6 +34,7 @@ var network_label: Label
 var diagnostics_panel: PanelContainer
 var diagnostics_label: Label
 var snapshot_elapsed := 0.0
+var match_state_elapsed := 0.0
 var match_running := false
 var leaving := false
 var match_authority: MatchAuthority
@@ -69,7 +71,7 @@ func _ready() -> void:
 		authority_presentation.setup_source(match_replica)
 	authority_presentation.event_consumed.connect(_on_authority_event_consumed)
 	arena = ArenaScript.new() as ArenaWorld
-	arena.title = "NETWORK STAGE C"
+	arena.title = "LAN BRAWL"
 	var loaded_map := BrawlMapCatalog.load_definition(str(NetworkSession.match_config.get("map_id", "")))
 	if loaded_map == null or loaded_map.map_version != int(NetworkSession.match_config.get("map_version", 0)):
 		NetworkSession.close_session("地图数据缺失或版本不一致。")
@@ -131,10 +133,12 @@ func _ready() -> void:
 	add_child(scoreboard)
 	scoreboard.setup(local_actor.battle_id, NetworkSession.match_config.get("participants", []) as Array)
 	player_controller.targeting_changed.connect(hud.set_targeting)
+	player_controller.movement_requested.connect(_on_local_movement_requested)
 	command_runtime.movement_destination_resolved.connect(_on_movement_destination_resolved)
 	command_runtime.command_processed.connect(_on_command_processed)
 	command_gateway.command_confirmed.connect(_on_command_confirmed)
 	NetworkSession.state_snapshot_received.connect(_on_state_snapshot)
+	NetworkSession.match_state_received.connect(_on_match_state)
 	NetworkSession.authoritative_event_received.connect(_on_authoritative_event_received)
 	NetworkSession.entity_snapshot_received.connect(_on_entity_snapshot)
 	_build_ui()
@@ -156,6 +160,10 @@ func _physics_process(delta: float) -> void:
 		for snapshot in _build_state_snapshots():
 			NetworkSession.broadcast_state_snapshot(snapshot)
 		NetworkSession.broadcast_entity_snapshot(_build_entity_snapshot())
+	match_state_elapsed += delta
+	if match_state_elapsed >= MATCH_STATE_INTERVAL:
+		match_state_elapsed = fmod(match_state_elapsed, MATCH_STATE_INTERVAL)
+		_broadcast_match_state()
 
 
 func _process(_delta: float) -> void:
@@ -270,7 +278,9 @@ func _on_match_began() -> void:
 	player_controller.set_process_unhandled_input(true)
 	if score_manager != null:
 		score_manager.start_match()
-		scoreboard.apply_match_state(_build_match_state_packet())
+		var initial_match_state := _build_match_state_packet()
+		scoreboard.apply_match_state(initial_match_state)
+		NetworkSession.broadcast_match_state(initial_match_state)
 	status_label.text = "房主权威战斗已开始" if NetworkSession.is_host() else "只读战斗副本已开始"
 	status_label.add_theme_color_override("font_color", Color("8ff0a4"))
 
@@ -317,6 +327,17 @@ func _on_movement_destination_resolved(actor_id: int, requested: Vector3, resolv
 		move_indicator.show_destination(requested, resolved, reachable)
 
 
+func _on_local_movement_requested(requested: Vector3) -> void:
+	# Clients deliberately do not run the authority's command motor. Compute a
+	# read-only preview here; the host remains authoritative for real movement.
+	if NetworkSession.is_host() or local_actor == null or pathfinder == null:
+		return
+	var preview_path := pathfinder.find_path(local_actor.global_position, requested)
+	var reachable := not preview_path.is_empty()
+	var resolved := preview_path[preview_path.size() - 1] if reachable else requested
+	move_indicator.show_destination(requested, resolved, reachable)
+
+
 func _on_command_processed(command: BattleCommand, accepted: bool) -> void:
 	if local_actor == null or command.actor_id != local_actor.battle_id:
 		return
@@ -331,6 +352,7 @@ func _on_command_confirmed(_client_sequence: int, accepted: bool, reason: String
 	else:
 		network_label.text = "操作被拒绝：%s" % reason
 		network_label.add_theme_color_override("font_color", Color("ff9b8c"))
+		move_indicator.clear_destination(true)
 
 
 func _on_respawn_scheduled(actor: CombatActor, _duration: float) -> void:
@@ -367,17 +389,16 @@ func _build_state_snapshots() -> Array[Dictionary]:
 			"server_sequence": NetworkSession.latest_server_command_sequence(),
 			"actor": actor.network_state_packet(),
 		})
-	if score_manager != null:
-		var match_state := _build_match_state_packet()
-		if scoreboard != null:
-			scoreboard.apply_match_state(match_state)
-		snapshots.append({
-			"match_id": int(NetworkSession.match_config.get("match_id", 0)),
-			"server_tick": command_stream.current_tick,
-			"server_sequence": NetworkSession.latest_server_command_sequence(),
-			"match_state": match_state,
-		})
 	return snapshots
+
+
+func _broadcast_match_state() -> void:
+	if score_manager == null:
+		return
+	var match_state := _build_match_state_packet()
+	if scoreboard != null:
+		scoreboard.apply_match_state(match_state)
+	NetworkSession.broadcast_match_state(match_state)
 
 
 func _build_match_state_packet() -> Dictionary:
@@ -412,6 +433,14 @@ func _on_state_snapshot(snapshot: Dictionary) -> void:
 		arena.set_camera_target(local_actor, true)
 		move_indicator.clear_destination()
 		targeting_preview.clear()
+
+
+func _on_match_state(match_state: Dictionary) -> void:
+	if NetworkSession.is_host() or scoreboard == null:
+		return
+	scoreboard.apply_match_state(match_state)
+	if bool(match_state.get("ended", false)):
+		_end_local_match()
 
 
 func _on_authoritative_event_received(event_envelope: Dictionary) -> void:
@@ -472,6 +501,8 @@ func _is_supported_network_event(event: AuthoritativeEvent) -> bool:
 		]
 	if event.event_type == AuthoritativeEvent.MATCH_RULE:
 		return str(event.payload.get("event_kind", "")) in ["respawn_scheduled", "actor_respawned", "kill_announcement", "match_ended"]
+	if event.event_type == AuthoritativeEvent.COMBAT_FEEDBACK:
+		return str(event.payload.get("kind", "")) in ["damage", "heal"]
 	if event.event_type == AuthoritativeEvent.ENTITY_SPAWNED:
 		return str(event.payload.get("entity_kind", "")) in ["projectile", "delayed_attack", "chu_ying_stone", "chu_ying_barrier"]
 	if event.event_type == AuthoritativeEvent.ENTITY_DESTROYED:

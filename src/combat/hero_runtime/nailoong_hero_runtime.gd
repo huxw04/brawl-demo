@@ -55,13 +55,15 @@ func advance(delta: float) -> void:
 func update_pre_motion(delta: float) -> bool:
 	if actor.nailoong_leap_remaining <= 0.0:
 		return false
+	var previous_position := actor.global_position
 	actor.nailoong_leap_remaining = maxf(0.0, actor.nailoong_leap_remaining - delta)
 	var leap_progress := 1.0 - actor.nailoong_leap_remaining / maxf(actor.nailoong_leap_duration, 0.001)
 	actor.global_position = actor.nailoong_leap_start.lerp(actor.nailoong_leap_end, leap_progress)
 	actor.global_position.y += sin(leap_progress * PI) * 1.05
-	actor.velocity = Vector3.ZERO
+	actor.velocity = (actor.global_position - previous_position) / maxf(delta, 0.0001)
 	if actor.nailoong_leap_remaining <= 0.0:
 		actor.global_position = actor.nailoong_leap_end
+		actor.velocity = Vector3.ZERO
 		_finish_leap()
 	return true
 
@@ -99,8 +101,10 @@ func update_ground_special_motion(delta: float) -> bool:
 					vfx.spawn_bounce_flash(contact)
 	else:
 		actor.global_position += motion
-	actor.velocity.x = 0.0
-	actor.velocity.z = 0.0
+	# This ability moves by authored coordinates rather than move_and_slide().
+	# Publish its real tangent velocity so replicas can extrapolate smoothly
+	# between the 12 Hz authority snapshots.
+	actor.velocity = actor.nailoong_roll_direction * roll_speed
 	return true
 
 
@@ -243,10 +247,9 @@ func _update_regeneration(delta: float) -> void:
 		return
 	actor.nailoong_regen_tick_remaining -= delta
 	while actor.nailoong_regen_tick_remaining <= 0.0 and actor.nailoong_regen_ticks_remaining > 0:
-		actor.hp = minf(actor.definition.max_hp, actor.hp + 8.0)
+		actor.heal(12.0, actor.battle_id)
 		actor.nailoong_regen_ticks_remaining -= 1
 		actor.nailoong_regen_tick_remaining += 0.5
-		actor.resource_changed.emit(actor)
 		if not emit_hero_effect("nailoong_heal_tick", {"position": _vector_packet(actor.global_position)}):
 			var vfx := _vfx()
 			if vfx != null:

@@ -40,6 +40,7 @@ $integrationTests = @(
 	@{ Label = "data-driven maps and dynamic navigation"; Script = "res://tests/map_definition_test.gd" },
 	@{ Label = "authority respawn and safe spawn selection"; Script = "res://tests/respawn_manager_test.gd" },
 	@{ Label = "match score, assists, streaks, and results"; Script = "res://tests/score_manager_test.gd" },
+	@{ Label = "local combat feedback and floating numbers"; Script = "res://tests/combat_feedback_test.gd" },
     @{ Label = "combat rules"; Script = "res://tests/combat_integration.gd" },
     @{ Label = "commands, RNG, and pathfinding"; Script = "res://tests/command_system_test.gd" },
 	@{ Label = "authority events and stable entity ids"; Script = "res://tests/authority_runtime_test.gd" },
@@ -89,3 +90,7 @@ if ($LASTEXITCODE -ne 0) { throw "Stage E respawn network test failed" }
 Write-Host "Integration test: Stage E synchronized score and results"
 & (Join-Path $PSScriptRoot "test_network_stage_a.ps1") -GodotPath $godotPath -PeerScript "res://tests/network_match_rules_peer.gd" -Port 24667 -HostMarker "NETWORK_MATCH_RULES_HOST_PASS" -ClientMarker "NETWORK_MATCH_RULES_CLIENT_PASS" -Label "Stage E synchronized score and results" -TimeoutMs 30000
 if ($LASTEXITCODE -ne 0) { throw "Stage E match-rules network test failed" }
+
+Write-Host "Integration test: four-player localhost capacity"
+& (Join-Path $PSScriptRoot "test_network_four_players.ps1") -GodotPath $godotPath -Port 24677 -TimeoutMs 45000
+if ($LASTEXITCODE -ne 0) { throw "Four-player capacity test failed" }

@@ -54,6 +54,7 @@ func _run_host() -> void:
 	_check(not current_scene.diagnostics_panel.visible and current_scene.diagnostics_panel.is_ancestor_of(current_scene.status_label), "network status text should live inside the collapsed F3 diagnostics panel")
 	_check(current_scene.scoreboard.announcement_phrase.text == "一破·卧龙出山", "host kill card should include the requested first-kill meme title")
 	_check(current_scene.scoreboard.announcement_killer_portrait.texture != null and current_scene.scoreboard.announcement_victim_portrait.texture != null, "host kill card should resolve both hero portraits")
+	_check(current_scene.authority_presentation.combat_feedback_event_count == 1 and current_scene.authority_presentation.combat_number_spawn_count == 1, "host should show damage dealt by its local actor")
 	_check(current_scene.scoreboard.latency_by_actor.size() == 2, "host scoreboard should sample latency for every participant")
 	_check(await _wait_until(func() -> bool: return session.players.size() <= 1, 600), "client should acknowledge the synchronized result by leaving")
 
@@ -69,6 +70,7 @@ func _run_client() -> void:
 	_check(int(current_scene.authority_presentation.match_rule_counts_by_kind.get("match_ended", 0)) == 1, "client should consume one reliable match-end event")
 	_check(current_scene.scoreboard.result_panel.visible, "client should show the result panel")
 	_check(current_scene.scoreboard.announcement_phrase.text == "一破·卧龙出山", "client should render the synchronized streak title")
+	_check(current_scene.authority_presentation.combat_feedback_event_count == 1 and current_scene.authority_presentation.combat_number_spawn_count == 0, "client should receive the combat result but hide damage caused by another player")
 	_check(current_scene.scoreboard.latency_by_actor.size() == 2, "client should receive host-measured latency for every participant")
 	var tab_press := InputEventKey.new()
 	tab_press.keycode = KEY_TAB

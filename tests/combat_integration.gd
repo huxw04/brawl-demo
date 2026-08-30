@@ -23,6 +23,10 @@ func _run() -> void:
 	target.global_position = Vector3(-0.82, 0.05, 0.0)
 	target.facing = Vector3.LEFT
 	await _physics_frames(8)
+	for hero_id in ["cheems_samurai", "sword_shield_dog", "bear_grylls_jungler", "nailoong", "chu_ying"]:
+		var definition := HeroCatalog.create(hero_id)
+		_check(definition.max_hp >= 130.0 and definition.max_hp <= 160.0 and is_zero_approx(fmod(definition.max_hp, 10.0)), "%s health should use the compact 10-HP segment scale" % hero_id)
+	_check(source.actor_presentation.hp_label.text == "▰".repeat(16), "a full 160-health actor should display sixteen fixed 10-health segments")
 	_check(target.actor_presentation.sprite.modulate.is_equal_approx(Color.WHITE), "enemy relation colors must not tint the hero artwork")
 	_check(source.actor_presentation.stamina_ring != null and source.actor_presentation.stamina_ring.visible, "the locally controlled actor should have a world-space stamina ring")
 	_check(target.actor_presentation.stamina_ring != null and not target.actor_presentation.stamina_ring.visible, "non-local actors should not show stamina rings")

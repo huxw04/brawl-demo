@@ -52,7 +52,7 @@ func _build_ui() -> void:
 	column.add_child(_scene_button("战斗测试", "右键寻路、左键攻击，对战规则型 Bot", "res://scenes/battle_arena.tscn"))
 	column.add_child(HSeparator.new())
 	var network_title := Label.new()
-	network_title.text = "局域网房间 · 阶段 C"
+	network_title.text = "局域网房间"
 	network_title.add_theme_font_size_override("font_size", 21)
 	network_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(network_title)

@@ -7,7 +7,7 @@ static func create() -> HeroDefinition:
 	hero.hero_id = "chu_ying"
 	hero.display_name = "褚赢"
 	hero.theme_color = Color("e8edf4")
-	hero.max_hp = 125.0
+	hero.max_hp = 130.0
 	hero.move_speed = 3.15
 	hero.max_energy = 3.0
 	hero.starts_with_full_energy = true
@@ -24,7 +24,7 @@ static func create() -> HeroDefinition:
 	hero.sprite_faces_right = true
 
 	var basic := _ability("basic", "飞棋", 0.10, 0.04, 0.22, 0.48)
-	basic.damage = 2.0
+	basic.damage = 4.0
 	basic.projectile_speed = 8.5
 	basic.projectile_lifetime = 0.82
 	basic.projectile_radius = 0.12
@@ -35,7 +35,7 @@ static func create() -> HeroDefinition:
 	basic.vfx_id = "chu_ying_homing_stone"
 	basic.color = Color("f4f5f7")
 
-	var q := _ability("skill_q", "天元落子", 0.08, 0.05, 0.12, 0.5)
+	var q := _ability("skill_q", "落子", 0.08, 0.05, 0.12, 0.5)
 	q.damage = 5.0
 	q.spawns_attack = false
 	q.target_required_range = 5.0
@@ -48,7 +48,7 @@ static func create() -> HeroDefinition:
 	q.targeting_preview_range = q.target_required_range
 	q.targeting_preview_radius = q.hitbox_radius
 
-	var w := _ability("skill_w", "小棋盘", 0.18, 0.05, 0.22, 8.0)
+	var w := _ability("skill_w", "聚棋", 0.18, 0.05, 0.22, 8.0)
 	w.damage = 10.0
 	w.spawns_attack = false
 	w.target_required_range = 5.0
@@ -63,7 +63,7 @@ static func create() -> HeroDefinition:
 	w.targeting_preview_radius = w.hitbox_radius
 	w.targeting_preview_secondary_radius = 5.0
 
-	var e := _ability("skill_e", "棋魂传送", 1.0, 0.02, 0.10, 10.0)
+	var e := _ability("skill_e", "神行", 1.0, 0.02, 0.10, 10.0)
 	e.damage = 0.0
 	e.spawns_attack = false
 	e.target_required_range = 10.0
@@ -75,7 +75,7 @@ static func create() -> HeroDefinition:
 	e.targeting_preview_range = e.target_required_range
 	e.targeting_preview_radius = hero.body_radius
 
-	var r := _ability("ultimate", "棋界禁锢", 0.5, 0.05, 0.20, 30.0)
+	var r := _ability("ultimate", "棋界", 0.5, 0.05, 0.20, 30.0)
 	r.damage = 0.0
 	r.spawns_attack = false
 	r.target_required_range = 5.0

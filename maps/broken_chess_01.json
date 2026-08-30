@@ -1,0 +1,39 @@
+{
+  "format_version": 1,
+  "map_id": "broken_chess_01",
+  "map_version": 1,
+  "display_name": "残棋台",
+  "size": [30.0, 24.0],
+  "floor_color": "3b3932",
+  "grid_color": "565246",
+  "boundary_color": "79705d",
+  "camera": {
+    "orthographic_size": 11.5,
+    "position": [0.0, 10.8, 11.8],
+    "look_at": [0.0, 0.7, 0.0]
+  },
+  "spawn_points": [
+    {"id": "north_west", "position": [-12.0, 0.05, -9.0]},
+    {"id": "south_east", "position": [12.0, 0.05, 9.0]},
+    {"id": "north_east", "position": [12.0, 0.05, -9.0]},
+    {"id": "south_west", "position": [-12.0, 0.05, 9.0]},
+    {"id": "west_upper", "position": [-13.0, 0.05, -3.0]},
+    {"id": "east_lower", "position": [13.0, 0.05, 3.0]},
+    {"id": "east_upper", "position": [13.0, 0.05, -3.0]},
+    {"id": "west_lower", "position": [-13.0, 0.05, 3.0]},
+    {"id": "north", "position": [0.0, 0.05, -10.0]},
+    {"id": "south", "position": [0.0, 0.05, 10.0]}
+  ],
+  "obstacles": [
+    {"id": "north_west_room_h", "kind": "box", "center": [-7.0, 0.7, -4.5], "size": [5.0, 1.4, 0.55], "color": "81765f", "label": ""},
+    {"id": "north_west_room_v", "kind": "box", "center": [-4.75, 0.7, -2.8], "size": [0.55, 1.4, 3.4], "color": "81765f", "label": ""},
+    {"id": "north_east_room_h", "kind": "box", "center": [7.0, 0.7, -4.5], "size": [5.0, 1.4, 0.55], "color": "81765f", "label": ""},
+    {"id": "north_east_room_v", "kind": "box", "center": [4.75, 0.7, -2.8], "size": [0.55, 1.4, 3.4], "color": "81765f", "label": ""},
+    {"id": "south_west_room_h", "kind": "box", "center": [-7.0, 0.7, 4.5], "size": [5.0, 1.4, 0.55], "color": "81765f", "label": ""},
+    {"id": "south_west_room_v", "kind": "box", "center": [-4.75, 0.7, 2.8], "size": [0.55, 1.4, 3.4], "color": "81765f", "label": ""},
+    {"id": "south_east_room_h", "kind": "box", "center": [7.0, 0.7, 4.5], "size": [5.0, 1.4, 0.55], "color": "81765f", "label": ""},
+    {"id": "south_east_room_v", "kind": "box", "center": [4.75, 0.7, 2.8], "size": [0.55, 1.4, 3.4], "color": "81765f", "label": ""},
+    {"id": "center_stone_west", "kind": "box", "center": [-1.8, 0.45, 0.0], "size": [1.3, 0.9, 1.3], "color": "ddd5c2", "label": ""},
+    {"id": "center_stone_east", "kind": "box", "center": [1.8, 0.45, 0.0], "size": [1.3, 0.9, 1.3], "color": "363b40", "label": ""}
+  ]
+}

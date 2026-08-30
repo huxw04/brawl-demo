@@ -2,6 +2,7 @@ class_name MobaPlayerController
 extends Node
 
 signal targeting_changed(ability_id: String)
+signal movement_requested(world_target: Vector3)
 
 var actor: CombatActor
 var arena: ArenaWorld
@@ -34,6 +35,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_RIGHT:
 			pending_ability = ""
 			targeting_changed.emit("")
+			movement_requested.emit(mouse_ground)
 			stream.submit(BattleCommand.create(actor.battle_id, BattleCommand.Type.MOVE_TO, mouse_ground))
 		elif event.button_index == MOUSE_BUTTON_LEFT and not movement_only:
 			if pending_ability.is_empty():

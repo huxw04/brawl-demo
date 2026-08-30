@@ -25,6 +25,7 @@ var pathfinder: ArenaPathfinder
 var returning_to_launcher := false
 var match_authority: MatchAuthority
 var authority_presentation: AuthorityEventPresentation
+var dummy_regen_elapsed := 0.0
 
 
 func _ready() -> void:
@@ -60,7 +61,7 @@ func _ready() -> void:
 	dummy = ActorScript.new() as CombatActor
 	add_child(dummy)
 	var dummy_definition := PlaceholderHero.create()
-	dummy_definition.max_hp = 2400.0
+	dummy_definition.max_hp = 250.0
 	dummy.setup(dummy_definition, 2, "训练假人", CombatActor.Relation.ENEMY)
 	dummy.battle_id = 2
 	dummy.global_position = Vector3(0.2, 0.05, 0.8)
@@ -258,9 +259,10 @@ func _lab_defeat() -> void:
 	hero.receive_hit(dummy, basic, -hero.facing, 0, hero.definition.max_hp + 1.0)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if status_label == null:
 		return
+	_update_dummy_regeneration(delta)
 	var bypass_enabled := bypass_check != null and bypass_check.button_pressed
 	hero.ignore_ability_requirements = bypass_enabled
 	if bypass_enabled:
@@ -281,6 +283,16 @@ func _process(_delta: float) -> void:
 		float(hero.cooldowns.get("skill_q", 0.0)), float(hero.cooldowns.get("skill_w", 0.0)),
 		float(hero.cooldowns.get("skill_e", 0.0)), float(hero.cooldowns.get("ultimate", 0.0)),
 	]
+
+
+func _update_dummy_regeneration(delta: float) -> void:
+	if dummy == null or not is_instance_valid(dummy) or dummy.is_defeated or dummy.hp >= dummy.definition.max_hp:
+		dummy_regen_elapsed = 0.0
+		return
+	dummy_regen_elapsed += delta
+	while dummy_regen_elapsed >= 1.0:
+		dummy_regen_elapsed -= 1.0
+		dummy.heal(30.0, dummy.battle_id)
 
 
 func _input(event: InputEvent) -> void:

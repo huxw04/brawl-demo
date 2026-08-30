@@ -20,17 +20,7 @@ func configure(p_source: CombatActor, center: Vector3, p_half_extents: Vector2, 
 	add_to_group("deterministic_combat_units")
 	add_to_group("movement_confinements")
 	add_to_group("transient_combat_vfx")
-	for value in get_tree().get_nodes_in_group("combat_actors"):
-		if value is CombatActor:
-			var actor := value as CombatActor
-			var offset := actor.global_position - global_position
-			if actor != source and actor.team != source.team and not actor.is_defeated and absf(offset.x) <= half_extents.x and absf(offset.z) <= half_extents.y:
-				trapped.append(actor)
-				var body_margin := actor.definition.body_radius * 0.55
-				last_contained_positions[actor.battle_id] = Vector2(
-					clampf(actor.global_position.x, global_position.x - half_extents.x + body_margin, global_position.x + half_extents.x - body_margin),
-					clampf(actor.global_position.z, global_position.z - half_extents.y + body_margin, global_position.z + half_extents.y - body_margin)
-				)
+	_capture_entering_enemies()
 	if get_tree().get_first_node_in_group("authority_event_presentation") == null:
 		_create_visual()
 
@@ -40,10 +30,33 @@ func _physics_process(delta: float) -> void:
 	if remaining <= 0.0:
 		queue_free()
 		return
-	for actor in trapped:
+	for index in range(trapped.size() - 1, -1, -1):
+		var actor := trapped[index]
 		if actor == null or not is_instance_valid(actor) or actor.is_defeated:
-			continue
+			if actor != null and is_instance_valid(actor):
+				last_contained_positions.erase(actor.battle_id)
+			trapped.remove_at(index)
+	_capture_entering_enemies()
+	for actor in trapped:
 		_constrain_actor(actor)
+
+
+func _capture_entering_enemies() -> void:
+	for value in get_tree().get_nodes_in_group("combat_actors"):
+		if not value is CombatActor:
+			continue
+		var actor := value as CombatActor
+		if actor == source or actor.team == source.team or actor.is_defeated or trapped.has(actor):
+			continue
+		var offset := actor.global_position - global_position
+		if absf(offset.x) > half_extents.x or absf(offset.z) > half_extents.y:
+			continue
+		trapped.append(actor)
+		var body_margin := actor.definition.body_radius * 0.55
+		last_contained_positions[actor.battle_id] = Vector2(
+			clampf(actor.global_position.x, global_position.x - half_extents.x + body_margin, global_position.x + half_extents.x - body_margin),
+			clampf(actor.global_position.z, global_position.z - half_extents.y + body_margin, global_position.z + half_extents.y - body_margin)
+		)
 
 
 func _constrain_actor(actor: CombatActor) -> void:

@@ -40,8 +40,13 @@ func _run() -> void:
 	var bypass_check := lab_scene.get("bypass_check") as CheckButton
 	bypass_check.button_pressed = false
 	var lab_hero := lab_scene.get("hero") as CombatActor
+	var lab_dummy := lab_scene.get("dummy") as CombatActor
 	var lab_stream := lab_scene.get("command_stream") as BattleCommandStream
 	var lab_runtime := lab_scene.get("command_runtime") as BattleCommandRuntime
+	_check(is_equal_approx(lab_dummy.definition.max_hp, 250.0), "Lab dummy should use the readable 250-health test pool")
+	lab_dummy.hp = 100.0
+	await _frames(65)
+	_check(is_equal_approx(lab_dummy.hp, 130.0), "an injured Lab dummy should regenerate 30 health once per second")
 	var history_before := lab_stream.history.size()
 	lab_scene.call("_submit_lab_ability", "ultimate")
 	await _frames(50)

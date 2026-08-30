@@ -109,10 +109,9 @@ func modify_outgoing_damage(target: CombatActor, _ability: AbilityDefinition, ba
 func on_killed_actor(_target: CombatActor, ability: AbilityDefinition) -> void:
 	if actor.is_defeated:
 		return
-	actor.hp = minf(actor.definition.max_hp, actor.hp + 30.0)
+	actor.heal(30.0, actor.battle_id)
 	if ability != null and ability.ability_id == "ultimate":
 		actor.cooldowns["ultimate"] = 0.0
-	actor.resource_changed.emit(actor)
 
 
 func begin_grapple_pull(endpoint: Vector3) -> void:

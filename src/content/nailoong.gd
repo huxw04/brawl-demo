@@ -7,7 +7,7 @@ static func create() -> HeroDefinition:
 	hero.hero_id = "nailoong"
 	hero.display_name = "奶龙"
 	hero.theme_color = Color("ffd94a")
-	hero.max_hp = 180.0
+	hero.max_hp = 150.0
 	hero.move_speed = 3.25
 	hero.max_energy = 0.0
 	hero.status_bar_id = ""
@@ -29,7 +29,7 @@ static func create() -> HeroDefinition:
 	basic.vfx_id = "nailoong_tail_sweep"
 	basic.color = Color("ffe36b")
 
-	var roll := _ability("skill_q", "蜷身滚动", 0.06, 6.0, 0.0, 5.0)
+	var roll := _ability("skill_q", "滚球", 0.06, 6.0, 0.0, 5.0)
 	roll.damage = 0.0
 	roll.spawns_attack = false
 	roll.requires_aim_confirmation = false
@@ -40,8 +40,8 @@ static func create() -> HeroDefinition:
 	roll.vfx_id = "nailoong_roll"
 	roll.color = Color("ffe675")
 
-	var fire := _ability("skill_w", "持续喷火", 0.10, 5.0, 0.08, 8.0)
-	fire.damage = 1.0
+	var fire := _ability("skill_w", "龙焰", 0.10, 5.0, 0.08, 8.0)
+	fire.damage = 3.0
 	fire.spawns_attack = false
 	fire.requires_aim_confirmation = false
 	fire.hold_to_channel = true
@@ -57,7 +57,7 @@ static func create() -> HeroDefinition:
 	fire.vfx_id = "nailoong_fire_breath"
 	fire.color = Color("ff7a24")
 
-	var leap := _ability("skill_e", "蹦跳震地", 0.08, 0.52, 0.12, 5.0)
+	var leap := _ability("skill_e", "跃震", 0.08, 0.52, 0.12, 5.0)
 	leap.damage = 10.0
 	leap.spawns_attack = false
 	leap.hitbox_shape = "circle"
@@ -72,7 +72,7 @@ static func create() -> HeroDefinition:
 	leap.targeting_preview_range = 3.0
 	leap.targeting_preview_radius = leap.hitbox_radius
 
-	var laugh := _ability("ultimate", "大笑回血", 1.0, 0.02, 0.0, 30.0)
+	var laugh := _ability("ultimate", "大笑", 1.0, 0.02, 0.0, 30.0)
 	laugh.damage = 0.0
 	laugh.spawns_attack = false
 	laugh.requires_aim_confirmation = false

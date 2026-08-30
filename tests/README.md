@@ -11,6 +11,8 @@
 - `authority_runtime_test.gd`：权威事件顺序、稳定实体 ID、销毁登记和离线重放；
 - `match_replica_test.gd`：客户端只读副本、逐对象 tick 去重、状态恢复和阵亡/复活；
 - `score_manager_test.gd`：K/D/A、助攻窗口、实际伤害统计、连杀/终结与比赛结算；
+- `combat_feedback_test.gd`：实际伤害/治疗事件、本机可见性过滤、浮字内容与溢出治疗抑制；
+- `network_four_player_peer.gd`：四进程房间容量、唯一角色/所有权、同步移动、普通客户端退出与其余玩家继续；
 - `scene_command_runtime_test.gd`：Lab 与 Bot 场景共用命令运行时；
 - `moba_control_test.gd`：MOBA 输入和状态摘要；
 - 五名英雄的 `*_test.gd`，以及贝爷行走贴图节奏测试；

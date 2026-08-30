@@ -9,6 +9,10 @@ const MAX_Q_CHARGES := 3
 const Q_RECHARGE_SECONDS := 5.0
 const CombatEntityFactoryScript = preload("res://src/combat/runtime/combat_entity_factory.gd")
 
+var barrier_cast_origin := Vector3.ZERO
+var barrier_cast_endpoint := Vector3.ZERO
+var barrier_cast_geometry_ready := false
+
 
 func initialize() -> void:
 	_reset_charges()
@@ -29,6 +33,13 @@ func commit_ability(ability_id: String, _ability: AbilityDefinition, bypass_cost
 
 
 func before_startup_effects(ability: AbilityDefinition) -> void:
+	if ability.vfx_id == "chu_ying_barrier":
+		# Freeze the two selected corners when the cast begins. The 0.5-second
+		# windup must not silently move the rectangle if the authority corrects
+		# or otherwise changes the actor position before activation.
+		barrier_cast_origin = Vector3(actor.global_position.x, 0.0, actor.global_position.z)
+		barrier_cast_endpoint = _clamped_ability_point(ability.target_required_range)
+		barrier_cast_geometry_ready = true
 	if ability.vfx_id == "chu_ying_teleport":
 		if emit_hero_effect("chu_ying_teleport_charge", {
 			"duration": ability.startup,
@@ -77,6 +88,7 @@ func advance(delta: float) -> void:
 
 func reset() -> void:
 	_reset_charges()
+	barrier_cast_geometry_ready = false
 
 
 func runtime_snapshot() -> Dictionary:
@@ -148,8 +160,9 @@ func _activate_teleport(ability: AbilityDefinition) -> void:
 
 
 func _activate_barrier(ability: AbilityDefinition, attack_id: int) -> void:
-	var endpoint := _clamped_ability_point(ability.target_required_range)
-	var origin := Vector3(actor.global_position.x, 0.0, actor.global_position.z)
+	var origin := barrier_cast_origin if barrier_cast_geometry_ready else Vector3(actor.global_position.x, 0.0, actor.global_position.z)
+	var endpoint := barrier_cast_endpoint if barrier_cast_geometry_ready else _clamped_ability_point(ability.target_required_range)
+	barrier_cast_geometry_ready = false
 	var center := (origin + endpoint) * 0.5
 	var half_extents := Vector2(
 		maxf(absf(endpoint.x - origin.x) * 0.5, 0.5),
@@ -177,10 +190,10 @@ func _find_enemy_near_ability_point(max_range: float) -> CombatActor:
 			var point_offset := candidate.global_position - actor.pending_ability_target
 			point_offset.y = 0.0
 			var point_distance := point_offset.length_squared()
-			if point_distance < pointed_distance:
+			if point_distance <= pointed_distance:
 				pointed = candidate
 				pointed_distance = point_distance
-			if source_distance < nearest_distance:
+			if source_distance <= nearest_distance:
 				nearest = candidate
 				nearest_distance = source_distance
 	return pointed if pointed != null else nearest

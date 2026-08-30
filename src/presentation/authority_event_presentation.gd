@@ -5,6 +5,7 @@ signal event_consumed(event: AuthoritativeEvent)
 
 const ProjectileEventVisualScript = preload("res://src/presentation/projectile_event_visual.gd")
 const WorldEntityEventVisualScript = preload("res://src/presentation/world_entity_event_visual.gd")
+const WorldCombatNumberScript = preload("res://src/presentation/world_combat_number.gd")
 
 var authority: MatchAuthority
 var event_source: Node
@@ -15,6 +16,8 @@ var finished_entity_counts_by_kind: Dictionary = {}
 var world_effect_counts_by_vfx: Dictionary = {}
 var hero_effect_counts_by_vfx: Dictionary = {}
 var match_rule_counts_by_kind: Dictionary = {}
+var combat_feedback_event_count := 0
+var combat_number_spawn_count := 0
 
 
 func _ready() -> void:
@@ -35,6 +38,8 @@ func setup_source(p_event_source: Node) -> void:
 	world_effect_counts_by_vfx.clear()
 	hero_effect_counts_by_vfx.clear()
 	match_rule_counts_by_kind.clear()
+	combat_feedback_event_count = 0
+	combat_number_spawn_count = 0
 	_clear_entity_visuals()
 	if event_source == null:
 		return
@@ -66,6 +71,8 @@ func _consume_event(event: AuthoritativeEvent) -> void:
 		_consume_hero_effect(event.payload)
 	elif event.event_type == AuthoritativeEvent.MATCH_RULE:
 		_consume_match_rule(event.payload)
+	elif event.event_type == AuthoritativeEvent.COMBAT_FEEDBACK:
+		_consume_combat_feedback(event.payload)
 	event_consumed.emit(event)
 
 
@@ -229,6 +236,28 @@ func _consume_match_rule(payload: Dictionary) -> void:
 		return
 	actor.flash_remaining = 0.28
 	actor.actor_presentation.spawn_concentration_rings(0.9, 0.45, "RespawnArrival")
+
+
+func _consume_combat_feedback(payload: Dictionary) -> void:
+	combat_feedback_event_count += 1
+	if event_source == null:
+		return
+	var kind := str(payload.get("kind", ""))
+	var source := event_source.call("entity", int(payload.get("source_actor_id", 0))) as CombatActor
+	var target := event_source.call("entity", int(payload.get("target_actor_id", 0))) as CombatActor
+	if target == null or target.is_defeated and kind == "heal":
+		return
+	var visible_to_local := kind == "damage" and source != null and source.relation == CombatActor.Relation.SELF
+	visible_to_local = visible_to_local or kind == "heal" and target.relation == CombatActor.Relation.SELF
+	if not visible_to_local:
+		return
+	var amount := float(payload.get("amount", 0.0))
+	if amount <= 0.0:
+		return
+	var number := WorldCombatNumberScript.new() as WorldCombatNumber
+	add_child(number)
+	number.setup(target, amount, kind, combat_number_spawn_count)
+	combat_number_spawn_count += 1
 
 
 func _packet_vector(value: Variant) -> Vector3:

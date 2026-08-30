@@ -3,6 +3,7 @@ extends Node
 
 signal state_changed(state: State)
 signal lobby_changed(players: Array)
+signal map_selection_changed(map_id: String)
 signal error_changed(message: String)
 signal match_config_received(config: Dictionary)
 signal match_began
@@ -10,13 +11,14 @@ signal server_command_request_received(peer_id: int, packet: Dictionary)
 signal authoritative_command_received(command_packet: Dictionary)
 signal command_result_received(client_sequence: int, accepted: bool, reason: String, server_sequence: int)
 signal state_snapshot_received(snapshot: Dictionary)
+signal match_state_received(snapshot: Dictionary)
 signal authoritative_event_received(event_envelope: Dictionary)
 signal entity_snapshot_received(snapshot: Dictionary)
 
 enum State { OFFLINE, CONNECTING, LOBBY, LOADING_MATCH, IN_MATCH }
 
-const PROTOCOL_VERSION := 1
-const GAME_VERSION := "0.4.3-score-ui"
+const PROTOCOL_VERSION := 2
+const GAME_VERSION := "0.4.6-v1-candidate"
 const DEFAULT_PORT := 24567
 const MAX_PLAYERS := 4
 const SERVER_PEER_ID := 1
@@ -42,6 +44,7 @@ var authority_tick := 0
 var connection_started_msec := 0
 var auto_name_suffix := 0
 var match_map_definition: BrawlMapDefinition
+var selected_map_id := BrawlMapCatalog.LARGE_BRAWL_MAP_ID
 
 
 func _ready() -> void:
@@ -66,12 +69,16 @@ func host_room(display_name: String = "玩家", hero_id: String = "cheems_samura
 	local_display_name = _sanitize_name(display_name)
 	local_hero_id = _sanitize_hero(hero_id)
 	var peer := ENetMultiplayerPeer.new()
-	var result := peer.create_server(port, MAX_PLAYERS - 1)
+	# Keep one transport slot beyond the three admitted remote players. The
+	# overflow peer can then finish the handshake and receive our explicit
+	# "房间已满" rejection instead of ENet failing before application code runs.
+	var result := peer.create_server(port, MAX_PLAYERS)
 	if result != OK:
 		_set_error("创建房间失败：无法监听 UDP 端口 %d（错误 %d）" % [port, result])
 		return result
 	multiplayer.multiplayer_peer = peer
 	closing_session = false
+	selected_map_id = BrawlMapCatalog.LARGE_BRAWL_MAP_ID
 	next_player_id = 2
 	players = {
 		SERVER_PEER_ID: _make_player(1, SERVER_PEER_ID, local_display_name, local_hero_id, true),
@@ -137,6 +144,8 @@ func local_peer_id() -> int:
 func peer_round_trip_time_ms(peer_id: int) -> int:
 	if peer_id == local_peer_id():
 		return 0
+	if not multiplayer.has_multiplayer_peer() or peer_id not in multiplayer.get_peers():
+		return -1
 	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
 	if enet == null:
 		return -1
@@ -169,6 +178,19 @@ func request_profile(display_name: String, hero_id: String) -> void:
 		_apply_profile(SERVER_PEER_ID, packet)
 	else:
 		_request_profile.rpc_id(SERVER_PEER_ID, packet)
+
+
+func request_map_selection(map_id: String) -> void:
+	if not is_host() or state != State.LOBBY or not BrawlMapCatalog.is_network_map(map_id):
+		return
+	if selected_map_id == map_id:
+		return
+	selected_map_id = map_id
+	for peer_id in players:
+		var player := players[peer_id] as Dictionary
+		player["ready"] = false
+		players[peer_id] = player
+	_broadcast_lobby()
 
 
 func suggested_display_name(hero_id: String) -> String:
@@ -268,6 +290,11 @@ func broadcast_state_snapshot(snapshot: Dictionary) -> void:
 		_state_snapshot.rpc(snapshot)
 
 
+func broadcast_match_state(snapshot: Dictionary) -> void:
+	if is_host() and state == State.IN_MATCH:
+		_match_state.rpc(snapshot)
+
+
 func broadcast_authoritative_event(event_envelope: Dictionary) -> void:
 	if is_host() and state == State.IN_MATCH:
 		_authoritative_event.rpc(event_envelope)
@@ -351,14 +378,18 @@ func _request_command(packet: Dictionary) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 0)
-func _receive_lobby(packet: Array) -> void:
+func _receive_lobby(packet: Dictionary) -> void:
 	players.clear()
-	for player_value in packet:
+	for player_value in packet.get("players", []):
 		if player_value is Dictionary:
 			var player := (player_value as Dictionary).duplicate(true)
 			players[int(player.get("peer_id", 0))] = player
+	var incoming_map_id := str(packet.get("map_id", BrawlMapCatalog.LARGE_BRAWL_MAP_ID))
+	if BrawlMapCatalog.is_network_map(incoming_map_id):
+		selected_map_id = incoming_map_id
 	if state == State.CONNECTING:
 		_set_state(State.LOBBY)
+	map_selection_changed.emit(selected_map_id)
 	_emit_lobby()
 
 
@@ -399,6 +430,11 @@ func _receive_command_result(client_sequence: int, accepted: bool, reason: Strin
 @rpc("authority", "call_remote", "unreliable", 2)
 func _state_snapshot(snapshot: Dictionary) -> void:
 	state_snapshot_received.emit(snapshot)
+
+
+@rpc("authority", "call_remote", "reliable", 1)
+func _match_state(snapshot: Dictionary) -> void:
+	match_state_received.emit(snapshot)
 
 
 @rpc("authority", "call_remote", "reliable", 1)
@@ -469,8 +505,12 @@ func _apply_ready(peer_id: int, ready: bool) -> void:
 
 
 func _broadcast_lobby() -> void:
-	var packet := roster()
+	var packet := {
+		"players": roster(),
+		"map_id": selected_map_id,
+	}
 	_receive_lobby.rpc(packet)
+	map_selection_changed.emit(selected_map_id)
 	_emit_lobby()
 
 
@@ -518,7 +558,7 @@ func _check_all_loaded() -> void:
 
 
 func _build_match_config() -> Dictionary:
-	var definition := BrawlMapCatalog.default_network_map()
+	var definition := BrawlMapCatalog.load_definition(selected_map_id)
 	if definition == null:
 		return {}
 	match_map_definition = definition

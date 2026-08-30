@@ -300,13 +300,13 @@ func _apply_network_quality(rows: Array) -> void:
 
 
 func _result_table_text() -> String:
-	var lines: Array[String] = ["玩家　　　　　　 K / D / A　　输出　　承伤"]
+	var lines: Array[String] = ["玩家　　　　　　 K / D / A　　输出　　承伤　　治疗"]
 	for value in current_state.get("stats", []):
 		var row := value as Dictionary
 		var marker := "▶" if int(row.get("actor_id", 0)) == local_actor_id else " "
-		lines.append("%s %-14s  %2d / %2d / %2d　%5d　%5d" % [
+		lines.append("%s %-14s  %2d / %2d / %2d　%5d　%5d　%5d" % [
 			marker, str(row.get("name", "玩家")).left(14), int(row.get("kills", 0)), int(row.get("deaths", 0)), int(row.get("assists", 0)),
-			roundi(float(row.get("damage_dealt", 0.0))), roundi(float(row.get("damage_taken", 0.0))),
+			roundi(float(row.get("damage_dealt", 0.0))), roundi(float(row.get("damage_taken", 0.0))), roundi(float(row.get("healing", 0.0))),
 		])
 	return "\n".join(lines)
 

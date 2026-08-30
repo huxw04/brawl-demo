@@ -41,7 +41,7 @@ func _run() -> void:
 	var w := hero.definition.ability_by_id("skill_w")
 	var e := hero.definition.ability_by_id("skill_e")
 	var ultimate := hero.definition.ability_by_id("ultimate")
-	_check(is_equal_approx(basic.target_required_range, 5.0) and basic.projectile_homing and is_equal_approx(basic.damage, 2.0), "basic should be a 500-yard homing stone for 2 damage")
+	_check(is_equal_approx(basic.target_required_range, 5.0) and basic.projectile_homing and is_equal_approx(basic.damage, 4.0), "basic should be a 500-yard homing stone for 4 damage")
 	_check(is_equal_approx(q.hitbox_radius, 0.3) and is_equal_approx(q.cooldown, 0.5), "Q should use a 30-yard radius and 0.5 second cast interval")
 	_check(is_equal_approx(w.cooldown, 8.0) and is_equal_approx(w.hitbox_radius, 0.5), "W should use an eight-second cooldown and 50-yard impact")
 	_check(is_equal_approx(e.target_required_range, 10.0) and is_equal_approx(e.startup, 1.0), "E should teleport up to 1000 yards after one second")
@@ -54,7 +54,17 @@ func _run() -> void:
 	await _frames(6)
 	target.global_position = Vector3(3.0, 0.0, 0.35)
 	await _frames(45)
-	_check(is_equal_approx(hp_before - target.hp, 2.0), "homing basic should follow a moving target and deal two damage (actual %.2f)" % (hp_before - target.hp))
+	_check(is_equal_approx(hp_before - target.hp, 4.0), "homing basic should follow a moving target and deal four damage (actual %.2f)" % (hp_before - target.hp))
+
+	# Acquisition and hero-runtime targeting share an inclusive 500-yard edge.
+	# This catches the old state where pathing stopped at the boundary but the
+	# homing runtime rejected the same target and spawned no stone.
+	await _reset(Vector3.ZERO, Vector3(5.0, 0.0, 0.0))
+	hp_before = target.hp
+	hero.set_ability_target(target.global_position)
+	_check(hero.try_ability("basic"), "basic should start at the inclusive acquisition boundary")
+	await _frames(58)
+	_check(is_equal_approx(hp_before - target.hp, 4.0), "basic should hit at the same 500-yard boundary used by buffered pathing")
 
 	await _reset(Vector3.ZERO, Vector3(2.0, 0.0, 0.0))
 	_check(hero.chu_ying_q_charges == 3 and is_equal_approx(hero.energy, 3.0), "Q should start with three visible charges")
@@ -97,14 +107,32 @@ func _run() -> void:
 	await _reset(Vector3.ZERO, Vector3(3.6, 0.0, 1.2))
 	hero.set_ability_target(Vector3(4.0, 0.0, 3.0))
 	_check(hero.try_ability("ultimate"), "R should begin")
+	# The selected corners belong to cast time, not to wherever the actor may
+	# be corrected during the half-second windup.
+	hero.global_position = Vector3(-1.0, 0.05, 0.0)
 	await _frames(36)
 	_check(target.global_position.y > 0.05 or target.hurt_remaining > 0.25, "R should knock up enemies inside after 0.5 seconds")
 	var barriers := get_nodes_in_group("deterministic_combat_units").filter(func(node): return node is ChuYingBarrier)
 	_check(barriers.size() == 1, "R should create one persistent barrier")
 	if not barriers.is_empty():
 		var barrier := barriers[0] as ChuYingBarrier
-		_check(barrier.half_extents.is_equal_approx(Vector2(2.0, 1.5)) and barrier.trapped.has(target), "R should use the two points as opposite rectangle corners")
+		_check(barrier.global_position.distance_to(Vector3(2.0, 0.06, 1.5)) < 0.01 and barrier.half_extents.is_equal_approx(Vector2(2.0, 1.5)) and barrier.trapped.has(target), "R should freeze the cast-time actor and mouse points as opposite rectangle corners")
 		_check(get_nodes_in_group("chu_ying_light_walls").size() == 4, "R should surround its rectangle with four vertically fading light walls")
+		var late_target := CombatActor.new()
+		root.add_child(late_target)
+		late_target.setup(PlaceholderHero.create(), 3, "后来进入者", CombatActor.Relation.ENEMY)
+		late_target.battle_id = 3
+		late_target.global_position = Vector3(-1.0, 0.05, 1.0)
+		await _frames(2)
+		_check(not barrier.trapped.has(late_target), "an enemy outside the initial rectangle should start unconfined")
+		late_target.global_position = Vector3(1.0, 0.05, 1.0)
+		await _frames(2)
+		_check(barrier.trapped.has(late_target), "an enemy entering later should be captured by the one-way barrier")
+		late_target.global_position = Vector3(6.0, 0.05, 1.0)
+		await _frames(2)
+		var late_offset := late_target.global_position - barrier.global_position
+		_check(absf(late_offset.x) < barrier.half_extents.x and absf(late_offset.z) < barrier.half_extents.y, "an enemy captured after entering should no longer be able to leave")
+		late_target.queue_free()
 		var move_stream := BattleCommandStream.new()
 		root.add_child(move_stream)
 		var move_pathfinder := ArenaPathfinder.new()

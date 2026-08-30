@@ -50,7 +50,7 @@ func _run() -> void:
 	var laugh := hero.definition.ability_by_id("ultimate")
 	_check(is_equal_approx(basic.hitbox_radius, 2.2) and is_equal_approx(basic.damage, 10.0), "tail basic should use 220-yard range and 10 damage")
 	_check(is_equal_approx(roll.active, 6.0) and is_equal_approx(roll.cooldown, 5.0), "roll duration and cooldown should match design")
-	_check(is_equal_approx(fire.maximum_hold_duration, 5.0) and is_equal_approx(fire.move_speed_multiplier_during_cast, 0.5), "fire channel should last five seconds at half movement speed")
+	_check(is_equal_approx(fire.maximum_hold_duration, 5.0) and is_equal_approx(fire.move_speed_multiplier_during_cast, 0.5) and is_equal_approx(fire.damage, 3.0), "fire channel should last five seconds at half movement speed and deal three damage per projectile")
 	_check(is_equal_approx(leap.hitbox_radius, 1.5), "leap landing radius should be 150 yards")
 	_check(is_equal_approx(laugh.cooldown, 30.0), "laugh cooldown should be 30 seconds")
 
@@ -80,6 +80,7 @@ func _run() -> void:
 	hero.facing = Vector3.RIGHT
 	_check(hero.try_ability("skill_q"), "steering test roll should start")
 	await _frames(6)
+	_check(hero.velocity.length() > 4.5, "rolling should publish its authored velocity for replica interpolation")
 	hero.set_move_intent(Vector2(0.0, -1.0))
 	await _frames(12)
 	var steered_angle := Vector3.RIGHT.angle_to(hero.nailoong_roll_direction)
@@ -164,6 +165,7 @@ func _run() -> void:
 	_check(hero.try_ability("skill_e"), "leap should cast")
 	await _frames(20)
 	_check(hero.global_position.y > 0.45, "leap should visibly leave the ground")
+	_check(hero.velocity.length() > 1.0, "leap should publish its changing trajectory velocity for replica interpolation")
 	await _frames(28)
 	_check(hero.global_position.x > 2.65 and hero.global_position.x <= 3.05, "leap should travel no farther than 300 yards")
 	_check(is_equal_approx(leap_hp - target.hp, 10.0), "leap landing should deal 10 damage")
@@ -171,14 +173,14 @@ func _run() -> void:
 	_check(get_nodes_in_group("transient_combat_vfx").any(func(node: Node) -> bool: return node.name == "NailoongLandingShockwave"), "leap landing should use a white shockwave")
 
 	await _reset(Vector3.ZERO, Vector3(3.0, 0.0, 0.0))
-	hero.hp = 60.0
+	hero.hp = 20.0
 	_check(hero.try_ability("ultimate"), "laugh ultimate should cast")
 	await _frames(55)
-	_check(is_equal_approx(hero.hp, 60.0), "laugh should not heal before its one-second windup finishes")
+	_check(is_equal_approx(hero.hp, 20.0), "laugh should not heal before its one-second windup finishes")
 	await _frames(40)
 	_check(not get_nodes_in_group("nailoong_heal_crosses").is_empty(), "laugh healing ticks should raise green cross symbols")
 	await _frames(280)
-	_check(is_equal_approx(hero.hp, 140.0), "laugh should heal 8 health ten times over five seconds")
+	_check(is_equal_approx(hero.hp, 140.0), "laugh should heal 12 health ten times over five seconds")
 
 	# Replica action_elapsed only changes when a 12 Hz snapshot arrives. Spin
 	# phase must nevertheless advance every rendered frame on the client.

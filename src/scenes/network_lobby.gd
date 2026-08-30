@@ -5,6 +5,7 @@ var address_label: Label
 var roster_box: VBoxContainer
 var name_edit: LineEdit
 var hero_select: OptionButton
+var map_select: OptionButton
 var ready_button: Button
 var start_button: Button
 var feedback_label: Label
@@ -16,6 +17,7 @@ func _ready() -> void:
 	_build_ui()
 	NetworkSession.state_changed.connect(_on_state_changed)
 	NetworkSession.lobby_changed.connect(_on_lobby_changed)
+	NetworkSession.map_selection_changed.connect(_on_map_selection_changed)
 	NetworkSession.error_changed.connect(_on_error_changed)
 	_refresh_all()
 
@@ -29,7 +31,7 @@ func _build_ui() -> void:
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(center)
 	var panel := PanelContainer.new()
-	panel.custom_minimum_size = Vector2(820.0, 610.0)
+	panel.custom_minimum_size = Vector2(820.0, 650.0)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color("1d2937")
 	style.border_color = Color("4a647b")
@@ -77,6 +79,20 @@ func _build_ui() -> void:
 	hero_select.item_selected.connect(_submit_profile_from_index)
 	profile_row.add_child(hero_select)
 	column.add_child(profile_row)
+	var map_row := HBoxContainer.new()
+	map_row.add_theme_constant_override("separation", 10)
+	var map_label := Label.new()
+	map_label.text = "对战地图"
+	map_label.custom_minimum_size.x = 100.0
+	map_row.add_child(map_label)
+	map_select = OptionButton.new()
+	map_select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for map_id in BrawlMapCatalog.network_map_ids():
+		map_select.add_item(BrawlMapCatalog.display_name(map_id))
+		map_select.set_item_metadata(map_select.item_count - 1, map_id)
+	map_select.item_selected.connect(_submit_map_from_index)
+	map_row.add_child(map_select)
+	column.add_child(map_row)
 	var roster_title := Label.new()
 	roster_title.text = "玩家列表"
 	roster_title.add_theme_font_size_override("font_size", 20)
@@ -129,6 +145,7 @@ func _refresh_all() -> void:
 	_select_hero(NetworkSession.local_hero_id)
 	_on_state_changed(NetworkSession.state)
 	_on_lobby_changed(NetworkSession.roster())
+	_on_map_selection_changed(NetworkSession.selected_map_id)
 	_on_error_changed(NetworkSession.last_error)
 	var local := NetworkSession.local_player()
 	if not local.is_empty():
@@ -140,11 +157,12 @@ func _on_state_changed(value: BrawlNetworkSession.State) -> void:
 	match value:
 		BrawlNetworkSession.State.CONNECTING: status_label.text = "正在查找 %s:%d 的房主（尚未加入房间）…" % [NetworkSession.host_address, BrawlNetworkSession.DEFAULT_PORT]
 		BrawlNetworkSession.State.LOBBY: status_label.text = "已连接 · 等待所有玩家准备"
-		BrawlNetworkSession.State.LOADING_MATCH: status_label.text = "正在同步加载测试地图…"
+		BrawlNetworkSession.State.LOADING_MATCH: status_label.text = "正在同步加载 %s…" % BrawlMapCatalog.display_name(NetworkSession.selected_map_id)
 		_: status_label.text = "未连接"
 	ready_button.disabled = value != BrawlNetworkSession.State.LOBBY
 	start_button.disabled = not NetworkSession.can_host_start()
 	start_button.visible = NetworkSession.is_host()
+	map_select.disabled = not NetworkSession.is_host() or value != BrawlNetworkSession.State.LOBBY
 	if value == BrawlNetworkSession.State.OFFLINE and not leaving:
 		get_tree().change_scene_to_file.bind("res://scenes/launcher.tscn").call_deferred()
 
@@ -173,6 +191,18 @@ func _on_lobby_changed(roster: Array) -> void:
 
 func _on_error_changed(message: String) -> void:
 	feedback_label.text = message
+
+
+func _submit_map_from_index(_index: int) -> void:
+	if map_select.selected >= 0:
+		NetworkSession.request_map_selection(str(map_select.get_item_metadata(map_select.selected)))
+
+
+func _on_map_selection_changed(map_id: String) -> void:
+	for index in range(map_select.item_count):
+		if str(map_select.get_item_metadata(index)) == map_id:
+			map_select.select(index)
+			break
 
 
 func _submit_profile() -> void:

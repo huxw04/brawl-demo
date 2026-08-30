@@ -7,7 +7,7 @@ static func create() -> HeroDefinition:
 	hero.hero_id = "bear_grylls_jungler"
 	hero.display_name = "贝爷"
 	hero.theme_color = Color("6da86b")
-	hero.max_hp = 145.0
+	hero.max_hp = 140.0
 	hero.move_speed = 3.65
 	hero.max_energy = 0.0
 	hero.status_bar_id = ""
@@ -37,7 +37,7 @@ static func create() -> HeroDefinition:
 
 	var ranged_basic := AbilityDefinition.new()
 	ranged_basic.ability_id = "basic"
-	ranged_basic.display_name = "投掷小刀"
+	ranged_basic.display_name = "飞刀"
 	ranged_basic.startup = 0.12
 	ranged_basic.active = 0.05
 	ranged_basic.recovery = 0.23
@@ -53,7 +53,7 @@ static func create() -> HeroDefinition:
 
 	var melee_basic := AbilityDefinition.new()
 	melee_basic.ability_id = "basic"
-	melee_basic.display_name = "近身挥刀"
+	melee_basic.display_name = "近斩"
 	melee_basic.startup = 0.10
 	melee_basic.active = 0.09
 	melee_basic.recovery = 0.21
@@ -71,7 +71,7 @@ static func create() -> HeroDefinition:
 
 	var stealth := AbilityDefinition.new()
 	stealth.ability_id = "skill_q"
-	stealth.display_name = "荒野潜行"
+	stealth.display_name = "潜行"
 	stealth.startup = 0.08
 	stealth.active = 0.02
 	stealth.recovery = 0.10
@@ -85,7 +85,7 @@ static func create() -> HeroDefinition:
 
 	var poison := AbilityDefinition.new()
 	poison.ability_id = "skill_w"
-	poison.display_name = "毒刀标记"
+	poison.display_name = "毒刃"
 	poison.startup = 0.18
 	poison.active = 0.12
 	poison.recovery = 0.28
@@ -104,7 +104,7 @@ static func create() -> HeroDefinition:
 
 	var grapple := AbilityDefinition.new()
 	grapple.ability_id = "skill_e"
-	grapple.display_name = "求生钩爪"
+	grapple.display_name = "钩索"
 	grapple.startup = 0.12
 	grapple.active = 0.42
 	grapple.recovery = 0.16
@@ -127,7 +127,7 @@ static func create() -> HeroDefinition:
 
 	var ambush := AbilityDefinition.new()
 	ambush.ability_id = "ultimate"
-	ambush.display_name = "背后奇袭"
+	ambush.display_name = "奇袭"
 	ambush.startup = 0.16
 	ambush.active = 0.03
 	ambush.recovery = 0.32

@@ -3,9 +3,14 @@ extends RefCounted
 
 const TEST_MAP_ID := "stage_b_test_arena"
 const LARGE_BRAWL_MAP_ID := "large_brawl_01"
+const WIND_GORGE_MAP_ID := "wind_gorge_01"
+const BROKEN_CHESS_MAP_ID := "broken_chess_01"
+const NETWORK_MAP_IDS := [LARGE_BRAWL_MAP_ID, WIND_GORGE_MAP_ID, BROKEN_CHESS_MAP_ID]
 const PATHS := {
 	TEST_MAP_ID: "res://maps/stage_b_test_arena.json",
 	LARGE_BRAWL_MAP_ID: "res://maps/large_brawl_01.json",
+	WIND_GORGE_MAP_ID: "res://maps/wind_gorge_01.json",
+	BROKEN_CHESS_MAP_ID: "res://maps/broken_chess_01.json",
 }
 
 
@@ -27,3 +32,19 @@ static func default_test_map() -> BrawlMapDefinition:
 
 static func default_network_map() -> BrawlMapDefinition:
 	return load_definition(LARGE_BRAWL_MAP_ID)
+
+
+static func network_map_ids() -> Array[String]:
+	var result: Array[String] = []
+	for map_id in NETWORK_MAP_IDS:
+		result.append(str(map_id))
+	return result
+
+
+static func is_network_map(map_id: String) -> bool:
+	return map_id in NETWORK_MAP_IDS
+
+
+static func display_name(map_id: String) -> String:
+	var definition := load_definition(map_id)
+	return definition.display_name if definition != null else map_id

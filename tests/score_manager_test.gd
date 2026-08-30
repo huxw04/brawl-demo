@@ -25,6 +25,9 @@ func _run() -> void:
 	manager.register_actor(victim)
 	manager.register_actor(helper)
 	manager.start_match()
+	killer.hp = 50.0
+	_check(is_equal_approx(killer.heal(17.0, killer.battle_id), 17.0), "actual self-healing should be accepted")
+	_check(is_equal_approx(float(_stat(manager.network_state_packet(), 1).get("healing", 0.0)), 17.0), "score state should record actual healing by source")
 
 	var attack := killer.ability_by_id("basic")
 	_check(victim.receive_hit(helper, attack, Vector3.RIGHT, 1, 5.0), "assist damage should be accepted")
@@ -39,6 +42,7 @@ func _run() -> void:
 	for attack_id in [3, 4]:
 		victim.reset_runtime(Vector3.ZERO)
 		victim.receive_hit(killer, attack, Vector3.RIGHT, attack_id, 9999.0)
+	_check(str(kill_events[1].get("phrase", "")) == "一战成名", "second streak phrase should use the requested double-kill wording")
 	_check(int(_stat(manager.network_state_packet(), 1).get("streak", 0)) == 3, "three uninterrupted kills should build a three-kill streak")
 	killer.reset_runtime(Vector3.ZERO)
 	killer.receive_hit(helper, attack, Vector3.LEFT, 5, 9999.0)

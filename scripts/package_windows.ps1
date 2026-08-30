@@ -3,12 +3,12 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $godotExe = Join-Path $projectRoot ".tools\godot-4.7.2\Godot_v4.7.2-stable_win64_console.exe"
 $releaseTemplate = Join-Path $projectRoot ".tools\godot-4.7.2\editor_data\export_templates\4.7.2.stable\windows_release_x86_64.exe"
-$outputDir = Join-Path $projectRoot "dist\BrawlDemo-v0.4.3"
+$outputDir = Join-Path $projectRoot "dist\BrawlDemo-v0.4.6"
 $outputExe = Join-Path $outputDir "BrawlDemo.exe"
 $outputPck = Join-Path $outputDir "BrawlDemo.pck"
 $guideSource = Join-Path $projectRoot "PLAYTEST_README_zh-CN.txt"
 $guideTarget = Join-Path $outputDir "README_zh-CN.txt"
-$archivePath = Join-Path $projectRoot "dist\BrawlDemo-v0.4.3-windows-x86_64.zip"
+$archivePath = Join-Path $projectRoot "dist\BrawlDemo-v0.4.6-windows-x86_64.zip"
 
 if (-not (Test-Path -LiteralPath $godotExe)) {
     throw "Godot executable not found: $godotExe"

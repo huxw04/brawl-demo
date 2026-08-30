@@ -9,7 +9,7 @@ static func create() -> HeroDefinition:
 	hero.hero_id = "sword_shield_dog"
 	hero.display_name = "刀盾狗"
 	hero.theme_color = Color("b9854e")
-	hero.max_hp = 180.0
+	hero.max_hp = 160.0
 	hero.move_speed = 3.35
 	hero.max_energy = 0.0
 	hero.status_bar_id = ""
@@ -27,7 +27,7 @@ static func create() -> HeroDefinition:
 	_configure_layers(hero)
 	_configure_pose_clips(hero)
 
-	var basic := _ability("basic", "短刀挥砍", 0.12, 0.10, 0.24, 0.52)
+	var basic := _ability("basic", "斩击", 0.12, 0.10, 0.24, 0.52)
 	basic.damage = 11.0
 	basic.knockback = 0.0
 	basic.hitbox_shape = "arc"
@@ -38,7 +38,7 @@ static func create() -> HeroDefinition:
 	basic.energy_on_hit = 0.0
 	basic.vfx_id = "shield_dog_swing"
 
-	var q := _ability("skill_q", "正面格挡", 0.08, 0.10, 0.08, 2.0)
+	var q := _ability("skill_q", "铁壁", 0.08, 0.10, 0.08, 2.0)
 	q.damage = 0.0
 	q.spawns_attack = false
 	q.requires_aim_confirmation = false
@@ -50,7 +50,7 @@ static func create() -> HeroDefinition:
 	q.front_block_degrees = 120.0
 	q.vfx_id = "shield_guard"
 
-	var w := _ability("skill_w", "蓄力重劈", 0.5, 0.14, 0.0, 8.0)
+	var w := _ability("skill_w", "崩山", 0.5, 0.14, 0.0, 8.0)
 	w.damage = 15.0
 	w.knockback = 0.0
 	w.hitbox_size = Vector3(2.35, 1.35, 2.90)
@@ -68,7 +68,7 @@ static func create() -> HeroDefinition:
 	w.targeting_preview = "box"
 	w.targeting_preview_secondary_radius = w.delayed_radius
 
-	var e := _ability("skill_e", "盾牌猛击", 0.12, 0.18, 0.12, 6.0)
+	var e := _ability("skill_e", "盾肘", 0.12, 0.18, 0.12, 6.0)
 	e.damage = 8.0
 	e.knockback = 4.8
 	e.hitbox_size = Vector3(2.10, 1.25, 1.65)
@@ -80,7 +80,7 @@ static func create() -> HeroDefinition:
 	e.energy_on_hit = 0.0
 	e.targeting_preview = "box"
 
-	var r := _ability("ultimate", "肌肉觉醒", 0.62, 0.05, 0.20, 30.0)
+	var r := _ability("ultimate", "觉醒", 0.62, 0.05, 0.20, 30.0)
 	r.energy_cost = 0.0
 	r.damage = 0.0
 	r.spawns_attack = false
@@ -88,7 +88,7 @@ static func create() -> HeroDefinition:
 	r.cooldown_on_form_end = true
 	r.vfx_id = "sword_shield_transform"
 
-	var form_basic := _ability("basic", "肌肉重拳", 0.10, 0.12, 0.20, 0.48)
+	var form_basic := _ability("basic", "重拳", 0.10, 0.12, 0.20, 0.48)
 	form_basic.damage = 19.0
 	form_basic.knockback = 0.0
 	form_basic.hitbox_shape = "arc"
@@ -103,7 +103,7 @@ static func create() -> HeroDefinition:
 	form_q.disabled = true
 	form_q.spawns_attack = false
 
-	var form_w := _ability("skill_w", "肌肉突进", 0.04, 0.20, 0.08, 2.0)
+	var form_w := _ability("skill_w", "冲锋", 0.04, 0.20, 0.08, 2.0)
 	form_w.damage = 0.0
 	form_w.spawns_attack = true
 	form_w.requires_aim_confirmation = false
