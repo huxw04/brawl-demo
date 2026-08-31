@@ -2,6 +2,7 @@
 .tools/
 dist/
 runtime/*.png*
+docs/images/*.import
 export_templates/
 feature_profiles/
 script_templates/
